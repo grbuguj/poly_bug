@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>PolyBug - BTC/ETH 1H 트레이딩 봇</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+
+        header {
+            background: #111; border-bottom: 1px solid #222;
+            padding: 10px 20px; display: flex; align-items: center; gap: 12px;
+        }
+        header h1 { font-size: 17px; color: #fff; }
+        .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .badge.live { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .badge.offline { background: #3a1a1a; color: #f44336; border: 1px solid #f44336; }
+        .badge.dryrun { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
+
+        .btn { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .btn-green { background: #1b5e20; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-red { background: #b71c1c; color: #ef9a9a; border: 1px solid #f44336; }
+        .btn-blue { background: #0d2a4a; color: #64b5f6; border: 1px solid #1976d2; }
+        .btn:hover { opacity: 0.8; }
+
+        /* 레이아웃 */
+        .layout { display: grid; grid-template-columns: 1fr 300px; height: calc(100vh - 48px); }
+        .main { overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+        .sidebar { background: #111; border-left: 1px solid #222; display: flex; flex-direction: column; }
+
+        .card { background: #161616; border: 1px solid #222; border-radius: 8px; padding: 12px; }
+        .card h3 { font-size: 12px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* 탭 */
+        .tabs { display: flex; gap: 0; border-bottom: 1px solid #222; margin-bottom: 12px; }
+        .tab { padding: 8px 20px; cursor: pointer; font-size: 13px; font-weight: bold; color: #666; border-bottom: 2px solid transparent; }
+        .tab.active.btc { color: #f7931a; border-color: #f7931a; }
+        .tab.active.eth { color: #627eea; border-color: #627eea; }
+        .tab:hover { color: #aaa; }
+
+        /* 실시간 지표 */
+        .ind-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .ind-item { background: #111; border: 1px solid #222; border-radius: 6px; padding: 10px; text-align: center; }
+        .ind-label { font-size: 10px; color: #555; margin-bottom: 4px; }
+        .ind-value { font-size: 17px; font-weight: bold; color: #fff; }
+        .ind-sub { font-size: 11px; color: #666; margin-top: 2px; }
+        .up { color: #4caf50 !important; }
+        .down { color: #f44336 !important; }
+        .neutral { color: #ff9800 !important; }
+        .blink { animation: blink 1s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+        /* 통계 */
+        .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .stat-item { background: #111; border-radius: 6px; padding: 10px; text-align: center; border: 1px solid #222; }
+        .stat-num { font-size: 20px; font-weight: bold; color: #fff; }
+        .stat-label { font-size: 11px; color: #555; margin-top: 3px; }
+
+        /* 패턴 */
+        .pattern-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .pattern-item { background: #111; border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; border: 1px solid #222; }
+        .pattern-label { font-size: 11px; color: #888; }
+        .pattern-value { font-size: 12px; font-weight: bold; color: #64b5f6; }
+
+        /* 테이블 */
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { background: #1a1a1a; color: #555; padding: 7px 6px; text-align: left; border-bottom: 1px solid #222; }
+        td { padding: 7px 6px; border-bottom: 1px solid #161616; }
+        tr:hover td { background: #1a1a1a; }
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .tag-up { background: #1a3a1a; color: #4caf50; }
+        .tag-down { background: #3a1a1a; color: #f44336; }
+        .tag-hold { background: #2a2a2a; color: #888; }
+        .tag-win { background: #1a3a1a; color: #4caf50; }
+        .tag-lose { background: #3a1a1a; color: #f44336; }
+        .tag-pending { background: #2a2a1a; color: #ff9800; }
+        .tag-btc { background: #2a1a00; color: #f7931a; }
+        .tag-eth { background: #0a0a2a; color: #627eea; }
+
+        /* 로그 */
+        #logBox { height: 160px; overflow-y: auto; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 11px; }
+        .log-line { padding: 2px 0; border-bottom: 1px solid #111; }
+
+        /* 결과 폼 */
+        .result-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .result-form input, .result-form select { background: #1a1a1a; border: 1px solid #333; color: #eee; border-radius: 4px; padding: 5px 8px; font-size: 12px; }
+        .result-form input { width: 75px; }
+
+        /* 챗봇 */
+        .chat-header { padding: 12px 14px; border-bottom: 1px solid #222; }
+        .chat-header h3 { font-size: 13px; color: #fff; }
+        #chatMessages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+        .msg { max-width: 90%; padding: 7px 10px; border-radius: 8px; font-size: 11px; line-height: 1.5; }
+        .msg.user { background: #1a2a3a; color: #90caf9; align-self: flex-end; border-radius: 8px 8px 2px 8px; }
+        .msg.bot { background: #1a1a1a; color: #e0e0e0; align-self: flex-start; border-radius: 8px 8px 8px 2px; border: 1px solid #222; }
+        .quick-btns { padding: 6px 10px; border-top: 1px solid #222; display: flex; flex-wrap: wrap; gap: 4px; }
+        .qbtn { background: #1a1a2a; border: 1px solid #2a2a4a; color: #9e9eff; border-radius: 10px; padding: 3px 9px; font-size: 11px; cursor: pointer; }
+        .qbtn:hover { background: #1e1e3a; }
+        .chat-input { padding: 8px 10px; border-top: 1px solid #222; display: flex; gap: 6px; }
+        #chatInput { flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a; color: #e0e0e0; border-radius: 6px; padding: 6px 10px; font-size: 12px; outline: none; }
+        .send-btn { background: #1a2a4a; border: 1px solid #1976d2; color: #64b5f6; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+
+        /* EV 게이지 */
+        .ev-bar { height: 4px; background: #1a1a1a; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+        .ev-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🤖 PolyBug</h1>
+    <span class="badge dryrun">DRY-RUN</span>
+    <span id="botBadge" class="badge offline">OFFLINE</span>
+    <span id="pnlTotal" style="font-size:12px; color:#888; margin-left:4px;">PNL: $0.00</span>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <span id="tickDot" style="font-size:10px; color:#333;">●</span>
+        <button class="btn btn-green" onclick="botStart()">▶ 시작</button>
+        <button class="btn btn-blue" onclick="runOnce()">⚡ 1회 실행</button>
+        <button class="btn btn-red" onclick="botStop()">■ 정지</button>
+    </div>
+</header>
+
+<div class="layout">
+<div class="main">
+
+    <!-- 탭 -->
+    <div class="tabs">
+        <div class="tab active btc" id="tab-btc" onclick="switchTab('BTC')">₿ BTC</div>
+        <div class="tab eth" id="tab-eth" onclick="switchTab('ETH')">Ξ ETH</div>
+    </div>
+
+    <!-- 실시간 지표 (1초 갱신) -->
+    <div class="card">
+        <h3 id="indTitle">📡 BTC 실시간 지표 <span style="font-size:10px; color:#444;" id="tickTime"></span></h3>
+        <div class="ind-grid">
+            <div class="ind-item">
+                <div class="ind-label" id="priceLabel">BTC 현재가</div>
+                <div class="ind-value" id="indPrice">-</div>
+                <div class="ind-sub" id="indChange1h">1H: -</div>
+            </div>
+            <div class="ind-item">
+                <div class="ind-label">펀딩비</div>
+                <div class="ind-value" id="indFunding">-</div>
+                <div class="ind-sub" id="indFundingLabel">-</div>
+            </div>
+            <div class="ind-item">
+                <div class="ind-label">공포/탐욕</div>
+                <div class="ind-value" id="indFG">-</div>
+                <div class="ind-sub" id="indFGLabel">-</div>
+            </div>
+            <div class="ind-item">
+                <div class="ind-label" id="refLabel">ETH 1H</div>
+                <div class="ind-value" id="indRef">-</div>
+                <div class="ind-sub" id="indTrend">추세: -</div>
+            </div>
+            <div class="ind-item">
+                <div class="ind-label">OI 변화</div>
+                <div class="ind-value" id="indOI">-</div>
+                <div class="ind-sub" id="indLS">L/S: -</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 통계 -->
+    <div class="card">
+        <h3 id="statTitle">📊 BTC 누적 성과</h3>
+        <div class="stat-grid">
+            <div class="stat-item"><div class="stat-num" id="statTotal">0</div><div class="stat-label">총 배팅</div></div>
+            <div class="stat-item"><div class="stat-num" id="statWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+            <div class="stat-item"><div class="stat-num" id="statPnl">$0</div><div class="stat-label">PNL</div></div>
+            <div class="stat-item"><div class="stat-num" id="statWins" style="color:#4caf50;">0</div><div class="stat-label">WIN</div></div>
+            <div class="stat-item"><div class="stat-num" id="statResolved">0</div><div class="stat-label">확정</div></div>
+        </div>
+    </div>
+
+    <!-- 패턴 학습 -->
+    <div class="card">
+        <h3>🧪 패턴 학습</h3>
+        <div class="pattern-grid" id="patternGrid">
+            <div class="pattern-item"><span class="pattern-label">데이터 쌓이는 중...</span></div>
+        </div>
+    </div>
+
+    <!-- 결과 업데이트 + 로그 (2열) -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="card">
+            <h3>✏️ 결과 업데이트</h3>
+            <div class="result-form">
+                <span style="color:#666; font-size:11px;">ID:</span>
+                <input id="resultId" type="number" placeholder="ID">
+                <select id="resultSelect">
+                    <option value="WIN">WIN ✅</option>
+                    <option value="LOSE">LOSE ❌</option>
+                </select>
+                <span style="color:#666; font-size:11px;">종료가:</span>
+                <input id="resultExitPrice" type="number" step="0.01" placeholder="price">
+                <button class="btn btn-blue" onclick="updateResult()">업데이트</button>
+            </div>
+        </div>
+        <div class="card">
+            <h3>📋 실시간 로그</h3>
+            <div id="logBox"></div>
+        </div>
+    </div>
+
+    <!-- 배팅 기록 -->
+    <div class="card">
+        <h3 id="tradeTitle">💼 BTC 배팅 기록</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th><th>시간</th><th>코인</th><th>방향</th>
+                    <th>진입가</th><th>금액</th><th>확신</th><th>EV</th>
+                    <th>펀딩비</th><th>공포탐욕</th><th>결과</th><th>PNL</th>
+                </tr>
+            </thead>
+            <tbody id="tradeTable"></tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- 챗봇 사이드바 -->
+<div class="sidebar">
+    <div class="chat-header">
+        <h3>💬 AI 어시스턴트</h3>
+        <p style="font-size:11px; color:#555; margin-top:2px;">BTC/ETH 1H 전문</p>
+    </div>
+    <div id="chatMessages">
+        <div class="msg bot">안녕! BTC/ETH 1H 트레이딩 봇이에요. 무엇이든 물어보세요 🤖</div>
+    </div>
+    <div class="quick-btns">
+        <button class="qbtn" onclick="quickAsk('지금 BTC 지표 분석해줘')">₿ BTC 분석</button>
+        <button class="qbtn" onclick="quickAsk('지금 ETH 지표 분석해줘')">Ξ ETH 분석</button>
+        <button class="qbtn" onclick="quickAsk('지금 배팅해야 해?')">💡 배팅 여부</button>
+        <button class="qbtn" onclick="quickAsk('오늘 수익 어때?')">💰 수익</button>
+        <button class="qbtn" onclick="quickAsk('최근 패턴 분석해줘')">🧪 패턴</button>
+        <button class="qbtn" onclick="quickAsk('봇 켜줘')">▶ 시작</button>
+        <button class="qbtn" onclick="quickAsk('봇 꺼줘')">■ 정지</button>
+        <button class="qbtn" onclick="quickAsk('지금 바로 배팅 실행해줘')">⚡ 즉시</button>
+    </div>
+    <div class="chat-input">
+        <input id="chatInput" type="text" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="send-btn" onclick="sendChat()">➤</button>
+    </div>
+</div>
+</div>
+
+<script>
+    let currentCoin = 'BTC';
+    let indicatorCache = { BTC: null, ETH: null };
+    let tickInterval = null;
+
+    // ===== WebSocket =====
+    let ws;
+    function connectWs() {
+        try {
+            ws = new WebSocket('ws://' + location.host + '/ws/trading');
+            ws.onmessage = e => addLog(e.data);
+            ws.onclose = () => setTimeout(connectWs, 3000);
+        } catch(e) { setTimeout(connectWs, 3000); }
+    }
+    connectWs();
+
+    function addLog(msg) {
+        const box = document.getElementById('logBox');
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        const now = new Date().toLocaleTimeString('ko-KR');
+        line.textContent = `[${now}] ${msg}`;
+        if (msg.includes('❌')||msg.includes('오류')||msg.includes('LOSE')) line.style.color='#f44336';
+        else if (msg.includes('✅')||msg.includes('WIN')||msg.includes('UP')) line.style.color='#4caf50';
+        else if (msg.includes('🧠')||msg.includes('Claude')) line.style.color='#64b5f6';
+        else if (msg.includes('🟡')||msg.includes('DRY')||msg.includes('HOLD')) line.style.color='#ff9800';
+        else line.style.color='#bbb';
+        box.insertBefore(line, box.firstChild);
+        if (box.children.length > 80) box.removeChild(box.lastChild);
+    }
+
+    // ===== 탭 전환 =====
+    function switchTab(coin) {
+        currentCoin = coin;
+        document.getElementById('tab-btc').className = 'tab' + (coin==='BTC'?' active btc':'');
+        document.getElementById('tab-eth').className = 'tab' + (coin==='ETH'?' active eth':'');
+        const isBtc = coin === 'BTC';
+        document.getElementById('indTitle').innerHTML = `📡 ${coin} 실시간 지표 <span style="font-size:10px;color:#444;" id="tickTime"></span>`;
+        document.getElementById('priceLabel').textContent = coin + ' 현재가';
+        document.getElementById('refLabel').textContent = isBtc ? 'ETH 1H' : 'BTC 1H';
+        document.getElementById('statTitle').textContent = `📊 ${coin} 누적 성과`;
+        document.getElementById('tradeTitle').textContent = `💼 ${coin} 배팅 기록`;
+        updateIndicatorUI(indicatorCache[coin]);
+        refreshStats(coin);
+        refreshTrades(coin);
+    }
+
+    // ===== 1초마다 가격만 바이낸스 직접 호출 =====
+    async function tickPrice() {
+        const dot = document.getElementById('tickDot');
+        dot.style.color = '#4caf50';
+        setTimeout(() => dot.style.color = '#333', 200);
+
+        const symbol = currentCoin === 'BTC' ? 'BTCUSDT' : 'ETHUSDT';
+        try {
+            const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
+            const d = await r.json();
+            const price = parseFloat(d.price);
+            const el = document.getElementById('indPrice');
+            const prev = parseFloat(el.dataset.prev || price);
+            el.textContent = '$' + price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            el.className = 'ind-value ' + (price > prev ? 'up' : price < prev ? 'down' : '');
+            el.dataset.prev = price;
+            document.getElementById('tickTime').textContent = new Date().toLocaleTimeString('ko-KR');
+        } catch(e) {}
+    }
+
+    // ===== 30초마다 전체 지표 갱신 (펀딩비, OI 등) =====
+    async function refreshIndicators(coin) {
+        try {
+            const m = await fetch('/indicators?coin=' + coin).then(r => r.json());
+            indicatorCache[coin] = m;
+            if (currentCoin === coin) updateIndicatorUI(m);
+        } catch(e) {}
+    }
+
+    function updateIndicatorUI(m) {
+        if (!m) return;
+        const isBtc = currentCoin === 'BTC';
+
+        // 펀딩비
+        const fr = m.fundingRate || 0;
+        const frEl = document.getElementById('indFunding');
+        frEl.textContent = (fr>=0?'+':'') + fr.toFixed(4) + '%';
+        frEl.className = 'ind-value ' + (fr > 0.05 ? 'down' : fr < -0.05 ? 'up' : 'neutral');
+        document.getElementById('indFundingLabel').textContent = fr > 0.05 ? '롱 과열' : fr < -0.05 ? '숏 과열' : '중립';
+
+        // 공포탐욕
+        const fg = m.fearGreedIndex || 50;
+        const fgEl = document.getElementById('indFG');
+        fgEl.textContent = fg;
+        fgEl.className = 'ind-value ' + (fg<=30?'up':fg>=70?'down':'neutral');
+        document.getElementById('indFGLabel').textContent = m.fearGreedLabel || '-';
+
+        // 1H 변화율
+        const c1 = isBtc ? (m.btcChange1h||0) : (m.ethChange1h||0);
+        const c1El = document.getElementById('indChange1h');
+        c1El.textContent = '1H: ' + (c1>=0?'+':'') + c1.toFixed(2) + '%';
+        c1El.className = 'ind-sub ' + (c1>=0?'up':'down');
+
+        // 상대 코인
+        const ref = isBtc ? (m.ethChange1h||0) : (m.btcChange1h||0);
+        const refEl = document.getElementById('indRef');
+        refEl.textContent = (ref>=0?'+':'') + ref.toFixed(2) + '%';
+        refEl.className = 'ind-value ' + (ref>=0?'up':'down');
+        document.getElementById('indTrend').textContent = '추세: ' + (m.trend||'-');
+
+        // OI
+        const oi = m.openInterestChange || 0;
+        const oiEl = document.getElementById('indOI');
+        oiEl.textContent = (oi>=0?'+':'') + oi.toFixed(2) + '%';
+        oiEl.className = 'ind-value ' + (oi>=0?'up':'down');
+        document.getElementById('indLS').textContent = 'L/S: ' + (m.longShortRatio||'-');
+    }
+
+    // ===== 통계 =====
+    async function refreshStats(coin) {
+        try {
+            const s = await fetch('/stats?coin=' + coin).then(r => r.json());
+            document.getElementById('statTotal').textContent = s.total||0;
+            document.getElementById('statWinRate').textContent = (s.winRate||'0')+'%';
+            const pnl = parseFloat(s.pnl||0);
+            const pnlEl = document.getElementById('statPnl');
+            pnlEl.textContent = (pnl>=0?'+$':'$') + Math.abs(pnl).toFixed(2);
+            pnlEl.style.color = pnl>=0?'#4caf50':'#f44336';
+            document.getElementById('statWins').textContent = s.wins||0;
+            document.getElementById('statResolved').textContent = s.resolved||0;
+
+            // 전체 PNL
+            const totalPnl = await fetch('/stats').then(r=>r.json()).then(d=>d.pnl||0);
+            document.getElementById('pnlTotal').textContent = 'PNL: $' + parseFloat(totalPnl).toFixed(2);
+
+            // 패턴
+            const grid = document.getElementById('patternGrid');
+            const patterns = s.patterns || {};
+            const keys = Object.keys(patterns);
+            grid.innerHTML = keys.length === 0
+                ? '<div class="pattern-item"><span class="pattern-label">데이터 쌓이는 중...</span></div>'
+                : keys.map(k => `<div class="pattern-item"><span class="pattern-label">${k}</span><span class="pattern-value">${patterns[k]}</span></div>`).join('');
+        } catch(e) {}
+    }
+
+    // ===== 배팅 기록 =====
+    async function refreshTrades(coin) {
+        try {
+            const trades = await fetch('/trades?coin=' + coin).then(r => r.json());
+            document.getElementById('tradeTable').innerHTML = trades.map(t => {
+                const dir = t.action==='BUY_YES' ? '<span class="tag tag-up">UP ⬆</span>'
+                    : t.action==='BUY_NO' ? '<span class="tag tag-down">DOWN ⬇</span>'
+                    : '<span class="tag tag-hold">HOLD</span>';
+                const res = t.result==='WIN' ? '<span class="tag tag-win">WIN ✅</span>'
+                    : t.result==='LOSE' ? '<span class="tag tag-lose">LOSE ❌</span>'
+                    : '<span class="tag tag-pending">PENDING</span>';
+                const coinTag = t.coin==='BTC'
+                    ? '<span class="tag tag-btc">₿BTC</span>'
+                    : '<span class="tag tag-eth">ΞETH</span>';
+                const dt = new Date(t.createdAt).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+                const reason = t.reason || '';
+                const evMatch = reason.match(/EV: ([+-][\d.]+%)/);
+                const ev = evMatch ? evMatch[1] : '-';
+                return `<tr title="${reason}">
+                    <td>${t.id}</td><td>${dt}</td><td>${coinTag}</td><td>${dir}</td>
+                    <td>$${(t.entryPrice||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                    <td>$${(t.betAmount||0).toFixed(2)}</td>
+                    <td>${t.confidence||0}%</td>
+                    <td style="color:#64b5f6">${ev}</td>
+                    <td>${t.fundingRate!=null?(t.fundingRate>=0?'+':'')+t.fundingRate.toFixed(4)+'%':'-'}</td>
+                    <td>${t.fearGreedIndex||'-'}</td>
+                    <td>${res}</td>
+                    <td style="color:${(t.profitLoss||0)>=0?'#4caf50':'#f44336'}">${t.profitLoss!=null?(t.profitLoss>=0?'+$':'$')+Math.abs(t.profitLoss).toFixed(2):'-'}</td>
+                </tr>`;
+            }).join('');
+        } catch(e) {}
+    }
+
+    // ===== 봇 상태 =====
+    async function refreshBotStatus() {
+        try {
+            const r = await fetch('/bot/status').then(r=>r.json());
+            const badge = document.getElementById('botBadge');
+            badge.textContent = r.running ? 'LIVE' : 'OFFLINE';
+            badge.className = 'badge ' + (r.running ? 'live' : 'offline');
+        } catch(e) {}
+    }
+
+    // ===== 버튼 =====
+    async function botStart() { await fetch('/bot/start',{method:'POST'}); refreshBotStatus(); }
+    async function botStop() { await fetch('/bot/stop',{method:'POST'}); refreshBotStatus(); }
+    async function runOnce() {
+        addLog('⚡ BTC/ETH 1회 실행 요청...');
+        await fetch('/trade/run',{method:'POST'});
+    }
+    async function updateResult() {
+        const id = document.getElementById('resultId').value;
+        const result = document.getElementById('resultSelect').value;
+        const exitPrice = document.getElementById('resultExitPrice').value;
+        if (!id) { alert('Trade ID를 입력하세요'); return; }
+        await fetch(`/trade/${id}/result?result=${result}&exitPrice=${exitPrice||0}`,{method:'POST'});
+        addLog(`📊 Trade #${id} 결과: ${result}`);
+        refreshTrades(currentCoin); refreshStats(currentCoin);
+    }
+
+    // ===== 챗봇 =====
+    function quickAsk(text) { document.getElementById('chatInput').value = text; sendChat(); }
+    async function sendChat() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        appendMsg('user', text);
+        try {
+            const r = await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})}).then(r=>r.json());
+            appendMsg('bot', r.reply || r.error || '오류');
+        } catch(e) { appendMsg('bot', '연결 오류'); }
+    }
+    function appendMsg(role, text) {
+        const box = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'msg ' + role;
+        div.textContent = text;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // ===== 초기화 & 폴링 =====
+    connectWs();
+    refreshBotStatus();
+    refreshIndicators('BTC');
+    refreshIndicators('ETH');
+    refreshStats('BTC');
+    refreshTrades('BTC');
+
+    // 1초마다 현재 코인 가격 갱신
+    setInterval(tickPrice, 1000);
+
+    // 30초마다 전체 지표 갱신
+    setInterval(() => refreshIndicators('BTC'), 30000);
+    setInterval(() => refreshIndicators('ETH'), 30000);
+
+    // 10초마다 봇 상태, 30초마다 통계/기록
+    setInterval(refreshBotStatus, 10000);
+    setInterval(() => refreshStats(currentCoin), 30000);
+    setInterval(() => refreshTrades(currentCoin), 30000);
+</script>
+</body>
+</html>
