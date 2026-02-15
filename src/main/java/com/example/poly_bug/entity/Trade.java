@@ -24,15 +24,21 @@ public class Trade {
 
     // ===== 배팅 정보 =====
     @Enumerated(EnumType.STRING)
+    @Column(columnDefinition = "VARCHAR(20)")
     private TradeAction action; // BUY_YES(Up), BUY_NO(Down), HOLD
 
     private Double betAmount;
+    private Double buyOdds;      // 매수 오즈 (0~1), PNL 계산 기준
     private Double entryPrice;   // 배팅 시점 ETH 가격
+    private Double openPrice;    // 정시(시초가) - 1H: 정각가, 15M: 윈도우 시작가
     private Double exitPrice;    // 결과 시점 ETH 가격
     private Integer confidence;  // Claude 확신도 (0~100)
 
     @Column(length = 2000)
-    private String reason;       // Claude 판단 근거
+    private String reason;       // Claude 판단 근거 (요약)
+
+    @Column(columnDefinition = "TEXT")
+    private String claudeAnalysis; // Claude 원본 응답 전문
 
     // ===== 배팅 당시 시장 지표 (패턴 학습용) =====
     private Double fundingRate;       // 펀딩비 (%)
@@ -46,7 +52,8 @@ public class Trade {
 
     // ===== 결과 =====
     @Enumerated(EnumType.STRING)
-    private TradeResult result; // WIN, LOSE, PENDING
+    @Column(columnDefinition = "VARCHAR(20)")
+    private TradeResult result; // WIN, LOSE, PENDING, HOLD
 
     private Double profitLoss;
 
@@ -68,6 +75,6 @@ public class Trade {
     }
 
     public enum TradeResult {
-        WIN, LOSE, PENDING
+        WIN, LOSE, PENDING, HOLD
     }
 }

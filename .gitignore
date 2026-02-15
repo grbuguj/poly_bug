@@ -35,3 +35,24 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Sensitive Data ###
+# API Keys, Private Keys, Secrets
+application-local.properties
+application-prod.properties
+*.env
+.env.*
+
+# Database files
+*.db
+*.h2.db
+poly-trading-bot.mv.db
+poly-trading-bot.trace.db
+
+# Backup files
+*.bak
+*.backup
+
+# Logs
+logs/
+*.log

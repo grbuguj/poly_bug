@@ -2,7 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>PolyBug - BTC/ETH 1H 트레이딩 봇</title>
+    <title>PolyBug - 멀티코인 트레이딩 봇</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
@@ -14,14 +14,24 @@
         header h1 { font-size: 17px; color: #fff; }
         .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
         .badge.live { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .badge.offline { background: #3a1a1a; color: #f44336; border: 1px solid #f44336; }
         .badge.dryrun { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
 
         .btn { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
-        .btn-green { background: #1b5e20; color: #4caf50; border: 1px solid #4caf50; }
-        .btn-red { background: #b71c1c; color: #ef9a9a; border: 1px solid #f44336; }
-        .btn-blue { background: #0d2a4a; color: #64b5f6; border: 1px solid #1976d2; }
         .btn:hover { opacity: 0.8; }
+
+        /* 탭 바 */
+        .tf-tabs {
+            display: flex; gap: 0; background: #111; border: 1px solid #222; border-radius: 10px; padding: 3px; margin-bottom: 12px;
+        }
+        .tf-tab {
+            flex: 1; padding: 10px 0; text-align: center; border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: bold; color: #555; transition: all 0.2s; border: none; background: transparent;
+        }
+        .tf-tab:hover { color: #888; }
+        .tf-tab.active-1h { background: #1a2a1a; color: #4caf50; border: 1px solid #2a4a2a; }
+        .tf-tab.active-15m { background: #1a1a2a; color: #ce93d8; border: 1px solid #2a1a3a; }
+        .tf-tab.active-5m { background: #1a1a0a; color: #ffd54f; border: 1px solid #3a3a0a; }
+        .tf-tab .tab-count { font-size: 10px; font-weight: normal; margin-left: 4px; opacity: 0.6; }
 
         /* 레이아웃 */
         .layout { display: grid; grid-template-columns: 1fr 300px; height: calc(100vh - 48px); }
@@ -31,14 +41,6 @@
         .card { background: #161616; border: 1px solid #222; border-radius: 8px; padding: 12px; }
         .card h3 { font-size: 12px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* 탭 */
-        .tabs { display: flex; gap: 0; border-bottom: 1px solid #222; margin-bottom: 12px; }
-        .tab { padding: 8px 20px; cursor: pointer; font-size: 13px; font-weight: bold; color: #666; border-bottom: 2px solid transparent; }
-        .tab.active.btc { color: #f7931a; border-color: #f7931a; }
-        .tab.active.eth { color: #627eea; border-color: #627eea; }
-        .tab:hover { color: #aaa; }
-
-        /* 실시간 지표 */
         .ind-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
         .ind-item { background: #111; border: 1px solid #222; border-radius: 6px; padding: 10px; text-align: center; }
         .ind-label { font-size: 10px; color: #555; margin-bottom: 4px; }
@@ -47,22 +49,17 @@
         .up { color: #4caf50 !important; }
         .down { color: #f44336 !important; }
         .neutral { color: #ff9800 !important; }
-        .blink { animation: blink 1s infinite; }
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-        /* 통계 */
         .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
         .stat-item { background: #111; border-radius: 6px; padding: 10px; text-align: center; border: 1px solid #222; }
         .stat-num { font-size: 20px; font-weight: bold; color: #fff; }
         .stat-label { font-size: 11px; color: #555; margin-top: 3px; }
 
-        /* 패턴 */
         .pattern-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
         .pattern-item { background: #111; border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; border: 1px solid #222; }
         .pattern-label { font-size: 11px; color: #888; }
         .pattern-value { font-size: 12px; font-weight: bold; color: #64b5f6; }
 
-        /* 테이블 */
         table { width: 100%; border-collapse: collapse; font-size: 11px; }
         th { background: #1a1a1a; color: #555; padding: 7px 6px; text-align: left; border-bottom: 1px solid #222; }
         td { padding: 7px 6px; border-bottom: 1px solid #161616; }
@@ -74,35 +71,36 @@
         .tag-win { background: #1a3a1a; color: #4caf50; }
         .tag-lose { background: #3a1a1a; color: #f44336; }
         .tag-pending { background: #2a2a1a; color: #ff9800; }
-        .tag-btc { background: #2a1a00; color: #f7931a; }
-        .tag-eth { background: #0a0a2a; color: #627eea; }
 
-        /* 로그 */
-        #logBox { height: 160px; overflow-y: auto; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 11px; }
-        .log-line { padding: 2px 0; border-bottom: 1px solid #111; }
+        .log-header { padding: 12px 14px; border-bottom: 1px solid #222; }
+        .log-header h3 { font-size: 13px; color: #fff; }
+        #logBox { flex: 1; overflow-y: auto; padding: 8px 10px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11px; }
+        .log-line { padding: 3px 0; border-bottom: 1px solid #111; line-height: 1.4; }
+        .log-count { padding: 6px 14px; border-top: 1px solid #222; font-size: 10px; color: #444; text-align: center; }
 
-        /* 결과 폼 */
-        .result-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-        .result-form input, .result-form select { background: #1a1a1a; border: 1px solid #333; color: #eee; border-radius: 4px; padding: 5px 8px; font-size: 12px; }
-        .result-form input { width: 75px; }
-
-        /* 챗봇 */
-        .chat-header { padding: 12px 14px; border-bottom: 1px solid #222; }
-        .chat-header h3 { font-size: 13px; color: #fff; }
-        #chatMessages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-        .msg { max-width: 90%; padding: 7px 10px; border-radius: 8px; font-size: 11px; line-height: 1.5; }
-        .msg.user { background: #1a2a3a; color: #90caf9; align-self: flex-end; border-radius: 8px 8px 2px 8px; }
-        .msg.bot { background: #1a1a1a; color: #e0e0e0; align-self: flex-start; border-radius: 8px 8px 8px 2px; border: 1px solid #222; }
-        .quick-btns { padding: 6px 10px; border-top: 1px solid #222; display: flex; flex-wrap: wrap; gap: 4px; }
-        .qbtn { background: #1a1a2a; border: 1px solid #2a2a4a; color: #9e9eff; border-radius: 10px; padding: 3px 9px; font-size: 11px; cursor: pointer; }
-        .qbtn:hover { background: #1e1e3a; }
-        .chat-input { padding: 8px 10px; border-top: 1px solid #222; display: flex; gap: 6px; }
-        #chatInput { flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a; color: #e0e0e0; border-radius: 6px; padding: 6px 10px; font-size: 12px; outline: none; }
-        .send-btn { background: #1a2a4a; border: 1px solid #1976d2; color: #64b5f6; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-
-        /* EV 게이지 */
         .ev-bar { height: 4px; background: #1a1a1a; border-radius: 2px; margin-top: 4px; overflow: hidden; }
         .ev-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+        .tab-content { display: none; flex-direction: column; gap: 10px; }
+        .tab-content.active { display: flex; }
+
+        /* 배팅 행 클릭 확장 */
+        tr.trade-row { cursor: pointer; transition: background 0.15s; }
+        tr.trade-row:hover td { background: #1a1a2a !important; }
+        tr.trade-row.expanded td { background: #111 !important; border-bottom: none; }
+        tr.trade-detail-row td { padding: 0 !important; border-bottom: 1px solid #222; }
+        .trade-detail {
+            background: #0d1117; border: 1px solid #1a1a2e; border-radius: 6px;
+            margin: 4px 6px 10px 6px; padding: 14px; animation: slideDown 0.2s ease-out;
+        }
+        @keyframes slideDown { from { opacity:0; max-height:0; } to { opacity:1; max-height:500px; } }
+        .detail-section { margin-bottom: 10px; }
+        .detail-section:last-child { margin-bottom: 0; }
+        .detail-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .detail-reason { font-size: 12px; color: #ccc; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+        .detail-meta { display: flex; gap: 12px; flex-wrap: wrap; }
+        .detail-chip { font-size: 10px; padding: 3px 8px; border-radius: 4px; background: #1a1a1a; border: 1px solid #222; color: #888; }
+        .detail-reflection { font-size: 11px; color: #ff9800; line-height: 1.5; padding: 8px; background: #1a1a0d; border-radius: 4px; border: 1px solid #2a2a1a; }
     </style>
 </head>
 <body>
@@ -110,158 +108,953 @@
 <header>
     <h1>🤖 PolyBug</h1>
     <span class="badge dryrun">DRY-RUN</span>
-    <span id="botBadge" class="badge offline">OFFLINE</span>
+    <span class="badge live">LIVE</span>
     <span id="pnlTotal" style="font-size:12px; color:#888; margin-left:4px;">PNL: $0.00</span>
+    <span id="balanceDisplay" style="font-size:13px; font-weight:bold; color:#4caf50; margin-left:8px; padding:3px 10px; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px;">💎 $50.00</span>
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
         <span id="tickDot" style="font-size:10px; color:#333;">●</span>
-        <button class="btn btn-green" onclick="botStart()">▶ 시작</button>
-        <button class="btn btn-blue" onclick="runOnce()">⚡ 1회 실행</button>
-        <button class="btn btn-red" onclick="botStop()">■ 정지</button>
+        <div id="headerBtns1h">
+            <button class="btn" style="background:#2a1a00; color:#f7931a; border:1px solid #f7931a;" onclick="runOnce('BTC','1H')">⚡ BTC</button>
+            <button class="btn" style="background:#0a0a2a; color:#627eea; border:1px solid #627eea;" onclick="runOnce('ETH','1H')">⚡ ETH</button>
+            <button class="btn" style="background:#0a1a1a; color:#00d4aa; border:1px solid #00d4aa;" onclick="runOnce('SOL','1H')">⚡ SOL</button>
+            <button class="btn" style="background:#0a0a1a; color:#00aaff; border:1px solid #00aaff;" onclick="runOnce('XRP','1H')">⚡ XRP</button>
+        </div>
+        <div id="headerBtns15m" style="display:none;">
+            <button class="btn" style="background:#1a0a1a; color:#ce93d8; border:1px solid #8e24aa;" onclick="runOnce('BTC','15M')">⚡ BTC 15M</button>
+            <button class="btn" style="background:#1a0a1a; color:#ce93d8; border:1px solid #8e24aa;" onclick="runOnce('ETH','15M')">⚡ ETH 15M</button>
+            <button class="btn" style="background:#1a0a1a; color:#ce93d8; border:1px solid #8e24aa;" onclick="runOnce('SOL','15M')">⚡ SOL 15M</button>
+            <button class="btn" style="background:#1a0a1a; color:#ce93d8; border:1px solid #8e24aa;" onclick="runOnce('XRP','15M')">⚡ XRP 15M</button>
+        </div>
+        <div id="headerBtns5m" style="display:none;">
+            <button class="btn" style="background:#1a1a0a; color:#ffd54f; border:1px solid #f9a825;" onclick="runOnce('BTC','5M')">⚡ BTC 5M</button>
+            <button class="btn" style="background:#1a1a0a; color:#ffd54f; border:1px solid #f9a825;" onclick="runOnce('ETH','5M')">⚡ ETH 5M</button>
+            <button class="btn" style="background:#1a1a0a; color:#ffd54f; border:1px solid #f9a825;" onclick="runOnce('SOL','5M')">⚡ SOL 5M</button>
+            <button class="btn" style="background:#1a1a0a; color:#ffd54f; border:1px solid #f9a825;" onclick="runOnce('XRP','5M')">⚡ XRP 5M</button>
+        </div>
     </div>
 </header>
 
 <div class="layout">
 <div class="main">
 
-    <!-- 탭 -->
-    <div class="tabs">
-        <div class="tab active btc" id="tab-btc" onclick="switchTab('BTC')">₿ BTC</div>
-        <div class="tab eth" id="tab-eth" onclick="switchTab('ETH')">Ξ ETH</div>
+    <!-- ===== 탭 바 ===== -->
+    <div class="tf-tabs">
+        <button id="tfTab1h" class="tf-tab active-1h" onclick="switchTimeframe('1H')">⏱ 1시간<span class="tab-count" id="tab1hCount"></span></button>
+        <button id="tfTab15m" class="tf-tab" onclick="switchTimeframe('15M')">⏱ 15분<span class="tab-count" id="tab15mCount"></span></button>
+        <button id="tfTab5m" class="tf-tab" onclick="switchTimeframe('5M')">⏱ 5분<span class="tab-count" id="tab5mCount"></span></button>
     </div>
 
-    <!-- 실시간 지표 (1초 갱신) -->
-    <div class="card">
-        <h3 id="indTitle">📡 BTC 실시간 지표 <span style="font-size:10px; color:#444;" id="tickTime"></span></h3>
-        <div class="ind-grid">
-            <div class="ind-item">
-                <div class="ind-label" id="priceLabel">BTC 현재가</div>
-                <div class="ind-value" id="indPrice">-</div>
-                <div class="ind-sub" id="indChange1h">1H: -</div>
+    <!-- ===== 공통: 실시간 현황 ===== -->
+    <div class="card" style="border-color:#2a1a00;">
+        <h3>⚡ 오즈 갭 모니터 <span style="font-size:10px; color:#444;" id="gapTime">실시간</span>
+            <span id="gapAlertBadge" style="display:none; margin-left:8px; padding:2px 8px; border-radius:10px; background:#ff9800; color:#000; font-size:10px; font-weight:bold;">기회!</span>
+        </h3>
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;" id="gapGrid">
+            <!-- JS로 채움 -->
+        </div>
+        <div style="margin-top:8px; padding:8px 12px; background:#0d1117; border:1px solid #1a1a2e; border-radius:6px;">
+            <div style="font-size:10px; color:#555; line-height:1.5;">
+                💡 <span style="color:#4caf50;">순방향</span>=시장이 늦다(오즈<추정) |
+                <span style="color:#e040fb;">역방향</span>=시장이 과잉반응(오즈 70%+인데 실제 확률 낮음→반대쪽이 싸다) |
+                갭 확인 3초 연속 → 자동배팅 | 🔥=트리거 임박
             </div>
-            <div class="ind-item">
-                <div class="ind-label">펀딩비</div>
-                <div class="ind-value" id="indFunding">-</div>
-                <div class="ind-sub" id="indFundingLabel">-</div>
-            </div>
-            <div class="ind-item">
-                <div class="ind-label">공포/탐욕</div>
-                <div class="ind-value" id="indFG">-</div>
-                <div class="ind-sub" id="indFGLabel">-</div>
-            </div>
-            <div class="ind-item">
-                <div class="ind-label" id="refLabel">ETH 1H</div>
-                <div class="ind-value" id="indRef">-</div>
-                <div class="ind-sub" id="indTrend">추세: -</div>
-            </div>
-            <div class="ind-item">
-                <div class="ind-label">OI 변화</div>
-                <div class="ind-value" id="indOI">-</div>
-                <div class="ind-sub" id="indLS">L/S: -</div>
+            <!-- ⭐ V5: 실시간 스캔 로그 -->
+            <div style="margin-top:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="font-size:10px; color:#666;">🔍 스캐너 활동 로그</span>
+                    <span style="font-size:9px; color:#333;" id="scanLogTime">-</span>
+                </div>
+                <div style="background:#0a0a0a; border:1px solid #1a1a1a; border-radius:6px; padding:8px; max-height:200px; overflow-y:auto;" id="scanLogBox">
+                    <div style="font-size:10px; color:#555;">스캔 로그 로딩중...</div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 통계 -->
+    <!-- ===== 공통: 실시간 현황 ===== -->
     <div class="card">
-        <h3 id="statTitle">📊 BTC 누적 성과</h3>
-        <div class="stat-grid">
-            <div class="stat-item"><div class="stat-num" id="statTotal">0</div><div class="stat-label">총 배팅</div></div>
-            <div class="stat-item"><div class="stat-num" id="statWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
-            <div class="stat-item"><div class="stat-num" id="statPnl">$0</div><div class="stat-label">PNL</div></div>
-            <div class="stat-item"><div class="stat-num" id="statWins" style="color:#4caf50;">0</div><div class="stat-label">WIN</div></div>
-            <div class="stat-item"><div class="stat-num" id="statResolved">0</div><div class="stat-label">확정</div></div>
+        <h3>📡 실시간 현황 <span style="font-size:10px; color:#444;" id="tickTime"></span></h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+            <div id="btcPriceCard" style="background:#111; border:1px solid #222; border-radius:8px; padding:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="color:#f7931a; font-weight:bold; font-size:14px;">₿ BTC</span>
+                    <span id="btcDirection" style="font-size:22px; font-weight:bold;">-</span>
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:10px;">
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:10px; color:#555;" class="open-label">정시 시작가</div>
+                        <div id="btcHourOpen" style="font-size:16px; font-weight:bold; color:#888;">-</div>
+                    </div>
+                    <div style="flex:0 0 30px; display:flex; align-items:center; justify-content:center;">
+                        <span id="btcArrow" style="font-size:20px; color:#666;">→</span>
+                    </div>
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:10px; color:#555;">현재가</div>
+                        <div id="btcNowPrice" style="font-size:16px; font-weight:bold; color:#fff;">-</div>
+                    </div>
+                </div>
+                <div id="btcPriceBar" style="height:6px; border-radius:3px; background:#1a1a1a; overflow:hidden; margin-bottom:6px;">
+                    <div id="btcPriceFill" style="height:100%; width:50%; border-radius:3px; transition:all 0.5s;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:11px;">
+                    <span id="btcPriceDiff" style="color:#666;">-</span>
+                    <span id="btcPricePct" style="color:#666;">-</span>
+                </div>
+            </div>
+            <div id="ethPriceCard" style="background:#111; border:1px solid #222; border-radius:8px; padding:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="color:#627eea; font-weight:bold; font-size:14px;">Ξ ETH</span>
+                    <span id="ethDirection" style="font-size:22px; font-weight:bold;">-</span>
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:10px;">
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:10px; color:#555;" class="open-label">정시 시작가</div>
+                        <div id="ethHourOpen" style="font-size:16px; font-weight:bold; color:#888;">-</div>
+                    </div>
+                    <div style="flex:0 0 30px; display:flex; align-items:center; justify-content:center;">
+                        <span id="ethArrow" style="font-size:20px; color:#666;">→</span>
+                    </div>
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:10px; color:#555;">현재가</div>
+                        <div id="ethNowPrice" style="font-size:16px; font-weight:bold; color:#fff;">-</div>
+                    </div>
+                </div>
+                <div id="ethPriceBar" style="height:6px; border-radius:3px; background:#1a1a1a; overflow:hidden; margin-bottom:6px;">
+                    <div id="ethPriceFill" style="height:100%; width:50%; border-radius:3px; transition:all 0.5s;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:11px;">
+                    <span id="ethPriceDiff" style="color:#666;">-</span>
+                    <span id="ethPricePct" style="color:#666;">-</span>
+                </div>
+            </div>
+            <div id="solPriceCard" style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="color:#00d4aa; font-weight:bold; font-size:13px;">◎ SOL</span>
+                    <span id="solDirection" style="font-size:18px; font-weight:bold;">-</span>
+                </div>
+                <div style="display:flex; gap:6px; margin-bottom:8px;">
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:9px; color:#555;" class="open-label">정시 시작가</div>
+                        <div id="solHourOpen" style="font-size:14px; font-weight:bold; color:#888;">-</div>
+                    </div>
+                    <div style="flex:0 0 20px; display:flex; align-items:center; justify-content:center;">
+                        <span id="solArrow" style="font-size:16px; color:#666;">→</span>
+                    </div>
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:9px; color:#555;">현재가</div>
+                        <div id="solNowPrice" style="font-size:14px; font-weight:bold; color:#fff;">-</div>
+                    </div>
+                </div>
+                <div id="solPriceBar" style="height:5px; border-radius:3px; background:#1a1a1a; overflow:hidden; margin-bottom:4px;">
+                    <div id="solPriceFill" style="height:100%; width:50%; border-radius:3px; transition:all 0.5s;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:10px;">
+                    <span id="solPriceDiff" style="color:#666;">-</span>
+                    <span id="solPricePct" style="color:#666;">-</span>
+                </div>
+            </div>
+            <div id="xrpPriceCard" style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="color:#00aaff; font-weight:bold; font-size:13px;">✕ XRP</span>
+                    <span id="xrpDirection" style="font-size:18px; font-weight:bold;">-</span>
+                </div>
+                <div style="display:flex; gap:6px; margin-bottom:8px;">
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:9px; color:#555;" class="open-label">정시 시작가</div>
+                        <div id="xrpHourOpen" style="font-size:14px; font-weight:bold; color:#888;">-</div>
+                    </div>
+                    <div style="flex:0 0 20px; display:flex; align-items:center; justify-content:center;">
+                        <span id="xrpArrow" style="font-size:16px; color:#666;">→</span>
+                    </div>
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:9px; color:#555;">현재가</div>
+                        <div id="xrpNowPrice" style="font-size:14px; font-weight:bold; color:#fff;">-</div>
+                    </div>
+                </div>
+                <div id="xrpPriceBar" style="height:5px; border-radius:3px; background:#1a1a1a; overflow:hidden; margin-bottom:4px;">
+                    <div id="xrpPriceFill" style="height:100%; width:50%; border-radius:3px; transition:all 0.5s;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:10px;">
+                    <span id="xrpPriceDiff" style="color:#666;">-</span>
+                    <span id="xrpPricePct" style="color:#666;">-</span>
+                </div>
+            </div>
+        </div>
+        <div class="ind-grid" style="margin-top:10px;">
+            <div class="ind-item"><div class="ind-label">펀딩비</div><div class="ind-value" id="indFunding">-</div><div class="ind-sub" id="indFundingLabel">-</div></div>
+            <div class="ind-item"><div class="ind-label">공포/탐욕</div><div class="ind-value" id="indFG">-</div><div class="ind-sub" id="indFGLabel">-</div></div>
+            <div class="ind-item"><div class="ind-label">OI 변화</div><div class="ind-value" id="indOI">-</div><div class="ind-sub" id="indLS">L/S: -</div></div>
+            <div class="ind-item"><div class="ind-label">추세</div><div class="ind-value" id="indTrend">-</div><div class="ind-sub" id="indTrendSub">-</div></div>
+            <div class="ind-item"><div class="ind-label">RSI</div><div class="ind-value" id="indRSI">-</div><div class="ind-sub" id="indRSILabel">-</div></div>
         </div>
     </div>
 
-    <!-- 패턴 학습 -->
-    <div class="card">
-        <h3>🧪 패턴 학습</h3>
-        <div class="pattern-grid" id="patternGrid">
-            <div class="pattern-item"><span class="pattern-label">데이터 쌓이는 중...</span></div>
-        </div>
-    </div>
+    <!-- ========== 1H 탭 ========== -->
+    <div id="tab1hContent" class="tab-content active">
 
-    <!-- 결과 업데이트 + 로그 (2열) -->
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <!-- 1H 오즈 -->
         <div class="card">
-            <h3>✏️ 결과 업데이트</h3>
-            <div class="result-form">
-                <span style="color:#666; font-size:11px;">ID:</span>
-                <input id="resultId" type="number" placeholder="ID">
-                <select id="resultSelect">
-                    <option value="WIN">WIN ✅</option>
-                    <option value="LOSE">LOSE ❌</option>
-                </select>
-                <span style="color:#666; font-size:11px;">종료가:</span>
-                <input id="resultExitPrice" type="number" step="0.01" placeholder="price">
-                <button class="btn btn-blue" onclick="updateResult()">업데이트</button>
+            <h3>🎲 Polymarket 1H 오즈 <span style="font-size:10px; color:#444;" id="oddsTime"></span></h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="color:#f7931a; font-weight:bold; font-size:14px;">₿ BTC</span>
+                        <span id="btcOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-bottom:10px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:10px; color:#4caf50; margin-bottom:4px;">⬆ UP</div>
+                            <div id="btcUpOdds" style="font-size:24px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:10px; color:#f44336; margin-bottom:4px;">⬇ DOWN</div>
+                            <div id="btcDownOdds" style="font-size:24px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:#1a1a1a;">
+                        <div id="btcUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="btcDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                    <div id="btcOddsSlug" style="font-size:9px; color:#333; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                    <div id="btcGapIndicator" style="margin-top:6px; padding:4px 8px; border-radius:4px; background:#0a0a0a; border:1px solid #1a1a1a; font-size:10px; color:#555; display:none;">
+                        <span id="btcGapText">갭 스캔 중...</span>
+                    </div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="color:#627eea; font-weight:bold; font-size:14px;">Ξ ETH</span>
+                        <span id="ethOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-bottom:10px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:10px; color:#4caf50; margin-bottom:4px;">⬆ UP</div>
+                            <div id="ethUpOdds" style="font-size:24px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:10px; color:#f44336; margin-bottom:4px;">⬇ DOWN</div>
+                            <div id="ethDownOdds" style="font-size:24px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:#1a1a1a;">
+                        <div id="ethUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="ethDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                    <div id="ethOddsSlug" style="font-size:9px; color:#333; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00d4aa; font-weight:bold; font-size:13px;">◎ SOL</span>
+                        <span id="solOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="solUpOdds" style="font-size:20px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="solDownOdds" style="font-size:20px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="solUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="solDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00aaff; font-weight:bold; font-size:13px;">✕ XRP</span>
+                        <span id="xrpOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="xrpUpOdds" style="font-size:20px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="xrpDownOdds" style="font-size:20px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="xrpUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="xrpDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
             </div>
         </div>
+
+        <!-- 차트 -->
         <div class="card">
-            <h3>📋 실시간 로그</h3>
-            <div id="logBox"></div>
+            <h3 style="display:flex; align-items:center; gap:10px;">
+                📈 1H 차트
+                <button id="chartBtcBtn" onclick="switchChart('BTC')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:#f7931a; color:#000; border:1px solid #f7931a;">₿ BTC</button>
+                <button id="chartEthBtn" onclick="switchChart('ETH')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:transparent; color:#627eea; border:1px solid #333;">Ξ ETH</button>
+                <button id="chartSolBtn" onclick="switchChart('SOL')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:transparent; color:#00d4aa; border:1px solid #333;">◎ SOL</button>
+                <button id="chartXrpBtn" onclick="switchChart('XRP')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:transparent; color:#00aaff; border:1px solid #333;">✕ XRP</button>
+            </h3>
+            <div id="chartContainer" style="height:400px; background:#0a0a0a; border-radius:6px;"></div>
+        </div>
+
+        <!-- 1H 트리거 -->
+        <div class="card">
+            <h3 style="display:flex; align-items:center; gap:8px;">
+                ⏱️ 1H 트리거
+                <span style="font-size:10px; color:#444; font-weight:normal;">Auto 72H · 매시 자동분석</span>
+            </h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px 14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="color:#f7931a; font-weight:bold; font-size:13px;">₿ BTC</span>
+                        <span id="btcTriggerSource" style="font-size:10px; color:#555;">기본값</span>
+                    </div>
+                    <div id="btcTriggerInfo"></div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px 14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="color:#627eea; font-weight:bold; font-size:13px;">Ξ ETH</span>
+                        <span id="ethTriggerSource" style="font-size:10px; color:#555;">기본값</span>
+                    </div>
+                    <div id="ethTriggerInfo"></div>
+                </div>
+            </div>
+            <div style="margin-top:10px; padding:10px 14px; background:#0d1117; border:1px solid #1a1a2e; border-radius:6px;">
+                <div style="font-size:11px; color:#555; line-height:1.6;">
+                    💡 <span style="color:#64b5f6;">EV (Expected Value)</span> = 기대수익률.
+                    예: 오즈 40¢에 UP 배팅 → 승률 60%면 EV = <span style="color:#4caf50;">+50%</span> (0.6×$1/0.4 - 1).
+                    <span style="color:#888;">탐색 트리거는 EV 기준↑(신중), 확인 트리거는 EV 기준↓(보완).</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1H 누적 성과 -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+            <div class="card">
+                <h3 style="color:#f7931a;">📊 ₿ BTC 1H</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="btcStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="btcStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="btcStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="color:#627eea;">📊 Ξ ETH 1H</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="ethStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="ethStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="ethStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="color:#00d4aa;">📊 ◎ SOL 1H</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="solStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="solStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="solStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="color:#00aaff;">📊 ✕ XRP 1H</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="xrpStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="xrpStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="xrpStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1H 배팅 기록 -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="card">
+                <h3 style="color:#f7931a;">💼 ₿ BTC 1H 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="btcTradeTable"></tbody></table>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="color:#627eea;">💼 Ξ ETH 1H 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="ethTradeTable"></tbody></table>
+                </div>
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="card">
+                <h3 style="color:#00d4aa;">💼 ◎ SOL 1H 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="solTradeTable"></tbody></table>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="color:#00aaff;">💼 ✕ XRP 1H 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="xrpTradeTable"></tbody></table>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab1hContent -->
+
+    <!-- ========== 15M 탭 ========== -->
+    <div id="tab15mContent" class="tab-content">
+
+        <!-- 15M 오즈 -->
+        <div class="card" style="border-color:#2a1a2a;">
+            <h3 style="color:#ce93d8;">🎲 Polymarket 15M 오즈 <span style="font-size:10px; color:#444;" id="odds15mTime"></span></h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#f7931a; font-weight:bold; font-size:13px;">₿ BTC 15M</span>
+                        <span id="btc15mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="btc15mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="btc15mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="btc15mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="btc15mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                    <div id="btc15mOddsSlug" style="font-size:9px; color:#333; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#627eea; font-weight:bold; font-size:13px;">Ξ ETH 15M</span>
+                        <span id="eth15mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="eth15mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="eth15mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="eth15mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="eth15mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                    <div id="eth15mOddsSlug" style="font-size:9px; color:#333; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00d4aa; font-weight:bold; font-size:13px;">◎ SOL 15M</span>
+                        <span id="sol15mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="sol15mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="sol15mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="sol15mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="sol15mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00aaff; font-weight:bold; font-size:13px;">✕ XRP 15M</span>
+                        <span id="xrp15mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="xrp15mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="xrp15mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="xrp15mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="xrp15mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 15M 차트 -->
+        <div class="card" style="border-color:#2a1a2a;">
+            <h3 style="display:flex; align-items:center; gap:10px; color:#ce93d8;">
+                📈 15M 차트
+                <button id="chart15mBtcBtn" onclick="switchChart15m('BTC')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:#f7931a; color:#000; border:1px solid #f7931a;">₿ BTC</button>
+                <button id="chart15mEthBtn" onclick="switchChart15m('ETH')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:transparent; color:#627eea; border:1px solid #333;">Ξ ETH</button>
+                <button id="chart15mSolBtn" onclick="switchChart15m('SOL')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:transparent; color:#00d4aa; border:1px solid #333;">◎ SOL</button>
+                <button id="chart15mXrpBtn" onclick="switchChart15m('XRP')" style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; background:transparent; color:#00aaff; border:1px solid #333;">✕ XRP</button>
+            </h3>
+            <div id="chart15mContainer" style="height:400px; background:#0a0a0a; border-radius:6px;"></div>
+        </div>
+
+        <!-- 15M 트리거 -->
+        <div class="card" style="border-color:#2a1a2a;">
+            <h3 style="display:flex; align-items:center; gap:8px; color:#ce93d8;">
+                ⏱️ 15M 트리거
+                <span style="font-size:10px; color:#555; font-weight:normal;">윈도우 내 오프셋(분)</span>
+            </h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-top:8px;">
+                <div style="background:#111; border:1px solid #2a1a2a; border-radius:8px; padding:10px 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#f7931a; font-weight:bold; font-size:12px;">₿ BTC 15M</span>
+                        <span id="btc15mTriggerSource" style="font-size:9px; color:#555;">기본값</span>
+                    </div>
+                    <div id="btc15mTriggerInfo"></div>
+                </div>
+                <div style="background:#111; border:1px solid #2a1a2a; border-radius:8px; padding:10px 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#627eea; font-weight:bold; font-size:12px;">Ξ ETH 15M</span>
+                        <span id="eth15mTriggerSource" style="font-size:9px; color:#555;">기본값</span>
+                    </div>
+                    <div id="eth15mTriggerInfo"></div>
+                </div>
+                <div style="background:#111; border:1px solid #2a1a2a; border-radius:8px; padding:10px 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00d4aa; font-weight:bold; font-size:12px;">◎ SOL 15M</span>
+                        <span id="sol15mTriggerSource" style="font-size:9px; color:#555;">기본값</span>
+                    </div>
+                    <div id="sol15mTriggerInfo"></div>
+                </div>
+                <div style="background:#111; border:1px solid #2a1a2a; border-radius:8px; padding:10px 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00aaff; font-weight:bold; font-size:12px;">✕ XRP 15M</span>
+                        <span id="xrp15mTriggerSource" style="font-size:9px; color:#555;">기본값</span>
+                    </div>
+                    <div id="xrp15mTriggerInfo"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 15M 누적 성과 -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#f7931a;">📊 ₿ BTC 15M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="btc15mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="btc15mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="btc15mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#627eea;">📊 Ξ ETH 15M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="eth15mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="eth15mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="eth15mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#00d4aa;">📊 ◎ SOL 15M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="sol15mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="sol15mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="sol15mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#00aaff;">📊 ✕ XRP 15M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="xrp15mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="xrp15mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="xrp15mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 15M 배팅 기록 -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#f7931a;">💼 ₿ BTC 15M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="btc15mTradeTable"></tbody></table>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#627eea;">💼 Ξ ETH 15M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="eth15mTradeTable"></tbody></table>
+                </div>
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#00d4aa;">💼 ◎ SOL 15M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="sol15mTradeTable"></tbody></table>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a1a2a;">
+                <h3 style="color:#00aaff;">💼 ✕ XRP 15M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="xrp15mTradeTable"></tbody></table>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab15mContent -->
+
+    <!-- ========== 5M 탭 ========== -->
+    <div id="tab5mContent" class="tab-content">
+
+        <!-- 5M 오즈 -->
+        <div class="card" style="border-color:#2a2a0a;">
+            <h3 style="color:#ffd54f;">🎲 Polymarket 5M 오즈 <span style="font-size:10px; color:#444;" id="odds5mTime"></span></h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#f7931a; font-weight:bold; font-size:13px;">₿ BTC 5M</span>
+                        <span id="btc5mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="btc5mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="btc5mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="btc5mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="btc5mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                    <div id="btc5mOddsSlug" style="font-size:9px; color:#333; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#627eea; font-weight:bold; font-size:13px;">Ξ ETH 5M</span>
+                        <span id="eth5mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="eth5mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="eth5mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="eth5mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="eth5mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                    <div id="eth5mOddsSlug" style="font-size:9px; color:#333; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00d4aa; font-weight:bold; font-size:13px;">◎ SOL 5M</span>
+                        <span id="sol5mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="sol5mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="sol5mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="sol5mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="sol5mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00aaff; font-weight:bold; font-size:13px;">✕ XRP 5M</span>
+                        <span id="xrp5mOddsStatus" style="font-size:10px; color:#555;">로딩...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="flex:1; background:#0a1a0a; border:1px solid #1a3a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#4caf50;">⬆ UP</div>
+                            <div id="xrp5mUpOdds" style="font-size:18px; font-weight:bold; color:#4caf50;">-</div>
+                        </div>
+                        <div style="flex:1; background:#1a0a0a; border:1px solid #3a1a1a; border-radius:6px; padding:8px; text-align:center;">
+                            <div style="font-size:9px; color:#f44336;">⬇ DOWN</div>
+                            <div id="xrp5mDownOdds" style="font-size:18px; font-weight:bold; color:#f44336;">-</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#1a1a1a;">
+                        <div id="xrp5mUpBar" style="background:#4caf50; width:50%; transition:width 0.5s;"></div>
+                        <div id="xrp5mDownBar" style="background:#f44336; width:50%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5M 누적 성과 -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#f7931a;">📊 ₿ BTC 5M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="btc5mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="btc5mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="btc5mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#627eea;">📊 Ξ ETH 5M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="eth5mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="eth5mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="eth5mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#00d4aa;">📊 ◎ SOL 5M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="sol5mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="sol5mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="sol5mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#00aaff;">📊 ✕ XRP 5M</h3>
+                <div class="stat-grid" style="grid-template-columns:repeat(3, 1fr);">
+                    <div class="stat-item"><div class="stat-num" id="xrp5mStatTotal">0</div><div class="stat-label">배팅</div></div>
+                    <div class="stat-item"><div class="stat-num" id="xrp5mStatWinRate" style="color:#4caf50;">0%</div><div class="stat-label">승률</div></div>
+                    <div class="stat-item"><div class="stat-num" id="xrp5mStatPnl">$0</div><div class="stat-label">PNL</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5M 배팅 기록 -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#f7931a;">💼 ₿ BTC 5M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="btc5mTradeTable"></tbody></table>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#627eea;">💼 Ξ ETH 5M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="eth5mTradeTable"></tbody></table>
+                </div>
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#00d4aa;">💼 ◎ SOL 5M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="sol5mTradeTable"></tbody></table>
+                </div>
+            </div>
+            <div class="card" style="border-color:#2a2a0a;">
+                <h3 style="color:#00aaff;">💼 ✕ XRP 5M 배팅</h3>
+                <div style="overflow-x:auto;">
+                <table><thead><tr>
+                    <th>시간</th><th>방향</th><th>시초가</th><th>진입가</th><th>종가</th><th>금액</th><th>확신</th><th>EV</th><th>결과</th><th>PNL</th>
+                </tr></thead><tbody id="xrp5mTradeTable"></tbody></table>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab5mContent -->
+
+    <!-- ===== 공통: 포트폴리오 ===== -->
+    <div class="card" id="portfolioCard" style="border-color:#1a3a1a;">
+        <h3>💰 뱅크롤 시뮬레이션 <span style="font-size:10px; color:#444; font-weight:normal;">$50 시작 · DRY-RUN</span></h3>
+        <div style="display:grid; grid-template-columns:1fr 1.3fr 1fr 1fr 1fr; gap:12px; margin-top:8px;">
+            <div style="background:#111; border:1px solid #222; border-radius:8px; padding:14px; text-align:center;">
+                <div style="font-size:10px; color:#555; margin-bottom:4px;">시작 자금</div>
+                <div id="portInitial" style="font-size:20px; font-weight:bold; color:#888;">$50.00</div>
+            </div>
+            <div id="portTotalBox" style="background:#0a0a1a; border:1px solid #1a1a3a; border-radius:8px; padding:14px; text-align:center;">
+                <div style="font-size:10px; color:#64b5f6; margin-bottom:4px;">💎 총 자산 (잔액+배팅)</div>
+                <div id="portTotal" style="font-size:28px; font-weight:bold; color:#64b5f6;">$50.00</div>
+                <div id="portTotalSub" style="font-size:10px; color:#555; margin-top:2px;">잔액 $50 + 배팅 $0</div>
+            </div>
+            <div style="background:#111; border:1px solid #222; border-radius:8px; padding:14px; text-align:center;">
+                <div style="font-size:10px; color:#555; margin-bottom:4px;">가용 잔액</div>
+                <div id="portCurrent" style="font-size:20px; font-weight:bold; color:#4caf50;">$50.00</div>
+            </div>
+            <div style="background:#111; border:1px solid #222; border-radius:8px; padding:14px; text-align:center;">
+                <div style="font-size:10px; color:#555; margin-bottom:4px;">수익률</div>
+                <div id="portPnlPct" style="font-size:20px; font-weight:bold; color:#888;">0.0%</div>
+            </div>
+            <div style="background:#111; border:1px solid #222; border-radius:8px; padding:14px; text-align:center;">
+                <div style="font-size:10px; color:#555; margin-bottom:4px;">손익</div>
+                <div id="portPnlAbs" style="font-size:20px; font-weight:bold; color:#888;">$0.00</div>
+            </div>
+        </div>
+        <div style="margin-top:12px; background:#0a0a0a; border:1px solid #1a1a1a; border-radius:8px; padding:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:11px; color:#555;">📈 이퀄리티 커브</span>
+                <span id="equityCurveInfo" style="font-size:10px; color:#444;">데이터 대기 중...</span>
+            </div>
+            <canvas id="equityCanvas" width="800" height="180" style="width:100%; height:180px; border-radius:4px;"></canvas>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+            <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                <div style="font-size:10px; color:#555; margin-bottom:8px;">🎯 활성 배팅 (PENDING)</div>
+                <div style="display:flex; gap:8px;">
+                    <div style="flex:1; text-align:center; padding:6px; background:#1a1a1a; border-radius:6px;">
+                        <div style="font-size:9px; color:#f7931a;">₿ BTC</div>
+                        <div id="lockedBtc" style="font-size:15px; font-weight:bold; color:#f7931a;">$0</div>
+                    </div>
+                    <div style="flex:1; text-align:center; padding:6px; background:#1a1a1a; border-radius:6px;">
+                        <div style="font-size:9px; color:#627eea;">Ξ ETH</div>
+                        <div id="lockedEth" style="font-size:15px; font-weight:bold; color:#627eea;">$0</div>
+                    </div>
+                    <div style="flex:1; text-align:center; padding:6px; background:#1a1a1a; border-radius:6px;">
+                        <div style="font-size:9px; color:#00d4aa;">◎ SOL</div>
+                        <div id="lockedSol" style="font-size:15px; font-weight:bold; color:#00d4aa;">$0</div>
+                    </div>
+                    <div style="flex:1; text-align:center; padding:6px; background:#1a1a1a; border-radius:6px;">
+                        <div style="font-size:9px; color:#00aaff;">✕ XRP</div>
+                        <div id="lockedXrp" style="font-size:15px; font-weight:bold; color:#00aaff;">$0</div>
+                    </div>
+                </div>
+                <div id="pendingCount" style="font-size:10px; color:#444; text-align:center; margin-top:6px;">0건 진행 중</div>
+            </div>
+            <div style="background:#111; border:1px solid #222; border-radius:8px; padding:12px;">
+                <div style="font-size:10px; color:#555; margin-bottom:8px;">💎 자산 변화</div>
+                <div style="position:relative; height:24px; background:#1a1a1a; border-radius:12px; overflow:hidden; margin-bottom:6px;">
+                    <div id="portBar" style="height:100%; width:50%; border-radius:12px; transition:all 0.5s; background:linear-gradient(90deg, #1b5e20, #4caf50);"></div>
+                    <div style="position:absolute; left:50%; top:0; height:100%; width:2px; background:#555; z-index:1;"></div>
+                    <div id="portBarLabel" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:11px; font-weight:bold; color:#fff; z-index:2;">$50</div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:9px; color:#444;">
+                    <span>파산 $0</span><span style="color:#666;">원금 $50</span><span>목표 $100</span>
+                </div>
+                <div style="margin-top:10px; padding:8px; background:#0d1117; border-radius:6px;">
+                    <div style="font-size:9px; color:#555; margin-bottom:4px;">🔮 12시간 예상 (시간당 ~2배팅)</div>
+                    <div id="scenarioText" style="font-size:10px; color:#666; line-height:1.5;">데이터 쌓이면 예측 표시</div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- 배팅 기록 -->
+    <!-- 공통: AI 누적 학습 -->
     <div class="card">
-        <h3 id="tradeTitle">💼 BTC 배팅 기록</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th><th>시간</th><th>코인</th><th>방향</th>
-                    <th>진입가</th><th>금액</th><th>확신</th><th>EV</th>
-                    <th>펀딩비</th><th>공포탐욕</th><th>결과</th><th>PNL</th>
-                </tr>
-            </thead>
-            <tbody id="tradeTable"></tbody>
-        </table>
+        <h3 style="display:flex; align-items:center; gap:10px;">
+            🧠 AI 누적 학습
+            <span style="font-size:10px; color:#444; font-weight:normal;">3계층: 조건부 승률 + AI 교훈 + 최근 반성</span>
+            <button onclick="compressLessons()" style="margin-left:auto; background:#1a1a2a; color:#64b5f6; border:1px solid #2a2a4a; border-radius:4px; padding:3px 10px; font-size:10px; cursor:pointer;">🔄 교훈 압축</button>
+        </h3>
+        <div id="lessonsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:8px; margin-top:8px;">
+            <div style="color:#444; font-size:11px; padding:10px;">데이터 쌓이는 중...</div>
+        </div>
+        <div id="lessonsFooter" style="font-size:10px; color:#444; margin-top:8px; padding:6px 10px; background:#0d1117; border-radius:4px;">
+            💡 반성 5건 누적 시 자동 압축 · 교훈은 매 판단에 자동 반영
+        </div>
+    </div>
+
+    <div style="text-align:right; margin-top:4px;">
+        <button onclick="deleteAllTrades()" style="background:#3a1a1a; color:#f44336; border:1px solid #f44336; border-radius:4px; padding:4px 12px; font-size:10px; cursor:pointer;">🗑️ 전체 삭제</button>
     </div>
 
 </div>
 
-<!-- 챗봇 사이드바 -->
+<!-- 실시간 로그 사이드바 -->
 <div class="sidebar">
-    <div class="chat-header">
-        <h3>💬 AI 어시스턴트</h3>
-        <p style="font-size:11px; color:#555; margin-top:2px;">BTC/ETH 1H 전문</p>
+    <div class="log-header">
+        <h3>📋 실시간 로그</h3>
+        <p style="font-size:11px; color:#555; margin-top:2px;">WebSocket 실시간 업데이트</p>
     </div>
-    <div id="chatMessages">
-        <div class="msg bot">안녕! BTC/ETH 1H 트레이딩 봇이에요. 무엇이든 물어보세요 🤖</div>
-    </div>
-    <div class="quick-btns">
-        <button class="qbtn" onclick="quickAsk('지금 BTC 지표 분석해줘')">₿ BTC 분석</button>
-        <button class="qbtn" onclick="quickAsk('지금 ETH 지표 분석해줘')">Ξ ETH 분석</button>
-        <button class="qbtn" onclick="quickAsk('지금 배팅해야 해?')">💡 배팅 여부</button>
-        <button class="qbtn" onclick="quickAsk('오늘 수익 어때?')">💰 수익</button>
-        <button class="qbtn" onclick="quickAsk('최근 패턴 분석해줘')">🧪 패턴</button>
-        <button class="qbtn" onclick="quickAsk('봇 켜줘')">▶ 시작</button>
-        <button class="qbtn" onclick="quickAsk('봇 꺼줘')">■ 정지</button>
-        <button class="qbtn" onclick="quickAsk('지금 바로 배팅 실행해줘')">⚡ 즉시</button>
-    </div>
-    <div class="chat-input">
-        <input id="chatInput" type="text" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter')sendChat()">
-        <button class="send-btn" onclick="sendChat()">➤</button>
-    </div>
+    <div id="logBox"></div>
+    <div class="log-count" id="logCount">0개 로그</div>
 </div>
 </div>
 
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
 <script>
     let currentCoin = 'BTC';
-    let indicatorCache = { BTC: null, ETH: null };
-    let tickInterval = null;
+    let currentCoin15m = 'BTC';
+    let currentTimeframe = '1H';
+    let indicatorCache = { BTC: null, ETH: null, SOL: null, XRP: null };
+    let tvWidget = null;
+    let tvWidget15m = null;
+
+    // ===== 타임프레임 탭 전환 =====
+    function switchTimeframe(tf) {
+        currentTimeframe = tf;
+        const tabs = {
+            '1H':  { tab: 'tfTab1h',  content: 'tab1hContent',  btns: 'headerBtns1h',  cls: 'active-1h' },
+            '15M': { tab: 'tfTab15m', content: 'tab15mContent', btns: 'headerBtns15m', cls: 'active-15m' },
+            '5M':  { tab: 'tfTab5m',  content: 'tab5mContent',  btns: 'headerBtns5m',  cls: 'active-5m' }
+        };
+        for (const [key, v] of Object.entries(tabs)) {
+            const isActive = key === tf;
+            document.getElementById(v.tab).className = isActive ? 'tf-tab ' + v.cls : 'tf-tab';
+            const content = document.getElementById(v.content);
+            if (content) { isActive ? content.classList.add('active') : content.classList.remove('active'); }
+            const btns = document.getElementById(v.btns);
+            if (btns) { btns.style.display = isActive ? '' : 'none'; }
+        }
+        // 탭 전환시 즉시 시초가 반영
+        tickPrice();
+    }
+
+    // ===== TradingView 차트 =====
+    function initChart(symbol) {
+        if (tvWidget) tvWidget.remove();
+        tvWidget = new TradingView.widget({
+            "autosize": true, "symbol": "BINANCE:" + symbol, "interval": "60",
+            "timezone": "Asia/Seoul", "theme": "dark", "style": "1", "locale": "kr",
+            "enable_publishing": false, "allow_symbol_change": false,
+            "container_id": "chartContainer", "hide_top_toolbar": false, "hide_side_toolbar": false,
+            "backgroundColor": "#0a0a0a", "gridColor": "#1a1a1a",
+            "studies": ["RSI@tv-basicstudies","MACD@tv-basicstudies"],
+            "disabled_features": ["use_localstorage_for_settings"]
+        });
+    }
 
     // ===== WebSocket =====
-    let ws;
+    let stompClient;
     function connectWs() {
         try {
-            ws = new WebSocket('ws://' + location.host + '/ws/trading');
-            ws.onmessage = e => addLog(e.data);
-            ws.onclose = () => setTimeout(connectWs, 3000);
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null;
+            stompClient.connect({}, function() {
+                stompClient.subscribe('/topic/trading', function(msg) { addLog(msg.body); });
+            }, function() { setTimeout(connectWs, 3000); });
         } catch(e) { setTimeout(connectWs, 3000); }
     }
     connectWs();
 
+    let logCount = 0;
     function addLog(msg) {
         const box = document.getElementById('logBox');
         const line = document.createElement('div');
@@ -274,221 +1067,907 @@
         else if (msg.includes('🟡')||msg.includes('DRY')||msg.includes('HOLD')) line.style.color='#ff9800';
         else line.style.color='#bbb';
         box.insertBefore(line, box.firstChild);
-        if (box.children.length > 80) box.removeChild(box.lastChild);
+        logCount++;
+        document.getElementById('logCount').textContent = logCount + '개 로그';
+        if (box.children.length > 200) box.removeChild(box.lastChild);
     }
 
-    // ===== 탭 전환 =====
-    function switchTab(coin) {
+    // ===== 차트 BTC/ETH 전환 =====
+    const coinColors = { BTC: '#f7931a', ETH: '#627eea', SOL: '#00d4aa', XRP: '#00aaff' };
+    function switchChart(coin) {
         currentCoin = coin;
-        document.getElementById('tab-btc').className = 'tab' + (coin==='BTC'?' active btc':'');
-        document.getElementById('tab-eth').className = 'tab' + (coin==='ETH'?' active eth':'');
-        const isBtc = coin === 'BTC';
-        document.getElementById('indTitle').innerHTML = `📡 ${coin} 실시간 지표 <span style="font-size:10px;color:#444;" id="tickTime"></span>`;
-        document.getElementById('priceLabel').textContent = coin + ' 현재가';
-        document.getElementById('refLabel').textContent = isBtc ? 'ETH 1H' : 'BTC 1H';
-        document.getElementById('statTitle').textContent = `📊 ${coin} 누적 성과`;
-        document.getElementById('tradeTitle').textContent = `💼 ${coin} 배팅 기록`;
-        updateIndicatorUI(indicatorCache[coin]);
-        refreshStats(coin);
-        refreshTrades(coin);
+        ['BTC','ETH','SOL','XRP'].forEach(c => {
+            const btn = document.getElementById('chart' + c.charAt(0) + c.slice(1).toLowerCase() + 'Btn');
+            if (!btn) return;
+            if (c === coin) {
+                btn.style.background = coinColors[c]; btn.style.color = c==='BTC'?'#000':'#fff'; btn.style.borderColor = coinColors[c];
+            } else {
+                btn.style.background = 'transparent'; btn.style.color = coinColors[c]; btn.style.borderColor = '#333';
+            }
+        });
+        initChart(coin + 'USDT');
+        updateIndicatorUI();
     }
 
-    // ===== 1초마다 가격만 바이낸스 직접 호출 =====
+    // ===== 15M 차트 4코인 전환 =====
+    function switchChart15m(coin) {
+        currentCoin15m = coin;
+        ['BTC','ETH','SOL','XRP'].forEach(c => {
+            const btn = document.getElementById('chart15m' + c.charAt(0) + c.slice(1).toLowerCase() + 'Btn');
+            if (!btn) return;
+            if (c === coin) {
+                btn.style.background = coinColors[c]; btn.style.color = c==='BTC'?'#000':'#fff'; btn.style.borderColor = coinColors[c];
+            } else {
+                btn.style.background = 'transparent'; btn.style.color = coinColors[c]; btn.style.borderColor = '#333';
+            }
+        });
+        initChart15m(coin + 'USDT');
+    }
+
+    function initChart15m(symbol) {
+        if (tvWidget15m) tvWidget15m.remove();
+        tvWidget15m = new TradingView.widget({
+            "autosize": true, "symbol": "BINANCE:" + symbol, "interval": "15",
+            "timezone": "Asia/Seoul", "theme": "dark", "style": "1", "locale": "kr",
+            "enable_publishing": false, "allow_symbol_change": false,
+            "container_id": "chart15mContainer", "hide_top_toolbar": false, "hide_side_toolbar": false,
+            "backgroundColor": "#0a0a0a", "gridColor": "#1a1a1a",
+            "studies": ["RSI@tv-basicstudies","MACD@tv-basicstudies"],
+            "disabled_features": ["use_localstorage_for_settings"]
+        });
+    }
+
+    // ===== 가격 갱신 =====
+    let hourOpen = { BTC: 0, ETH: 0, SOL: 0, XRP: 0 };
+    let open15m = { BTC: 0, ETH: 0, SOL: 0, XRP: 0 };
+
     async function tickPrice() {
         const dot = document.getElementById('tickDot');
         dot.style.color = '#4caf50';
         setTimeout(() => dot.style.color = '#333', 200);
-
-        const symbol = currentCoin === 'BTC' ? 'BTCUSDT' : 'ETHUSDT';
         try {
-            const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
-            const d = await r.json();
-            const price = parseFloat(d.price);
-            const el = document.getElementById('indPrice');
-            const prev = parseFloat(el.dataset.prev || price);
-            el.textContent = '$' + price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-            el.className = 'ind-value ' + (price > prev ? 'up' : price < prev ? 'down' : '');
-            el.dataset.prev = price;
+            const [btcRes, ethRes, solRes, xrpRes] = await Promise.all([
+                fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json()),
+                fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT').then(r=>r.json()),
+                fetch('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT').then(r=>r.json()),
+                fetch('https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT').then(r=>r.json())
+            ]);
+            const useOpen = currentTimeframe === '15M' ? open15m : hourOpen;
+            updatePriceCard('btc', parseFloat(btcRes.price), useOpen.BTC);
+            updatePriceCard('eth', parseFloat(ethRes.price), useOpen.ETH);
+            updatePriceCard('sol', parseFloat(solRes.price), useOpen.SOL);
+            updatePriceCard('xrp', parseFloat(xrpRes.price), useOpen.XRP);
+            const openLabel = currentTimeframe === '15M' ? '15M 시작가' : '정시 시작가';
+            document.querySelectorAll('.open-label').forEach(el => el.textContent = openLabel);
             document.getElementById('tickTime').textContent = new Date().toLocaleTimeString('ko-KR');
         } catch(e) {}
     }
 
-    // ===== 30초마다 전체 지표 갱신 (펀딩비, OI 등) =====
-    async function refreshIndicators(coin) {
-        try {
-            const m = await fetch('/indicators?coin=' + coin).then(r => r.json());
-            indicatorCache[coin] = m;
-            if (currentCoin === coin) updateIndicatorUI(m);
-        } catch(e) {}
+    function updatePriceCard(prefix, price, open) {
+        const fmt = {minimumFractionDigits:2, maximumFractionDigits:2};
+        document.getElementById(prefix+'NowPrice').textContent = '$' + price.toLocaleString('en-US', fmt);
+        if (open > 0) {
+            document.getElementById(prefix+'HourOpen').textContent = '$' + open.toLocaleString('en-US', fmt);
+            const diff = price - open;
+            const pct = (diff / open) * 100;
+            const isUp = diff >= 0;
+            const dirEl = document.getElementById(prefix+'Direction');
+            dirEl.textContent = isUp ? '⬆ UP' : '⬇ DOWN';
+            dirEl.style.color = isUp ? '#4caf50' : '#f44336';
+            document.getElementById(prefix+'Arrow').textContent = isUp ? '↗' : '↘';
+            document.getElementById(prefix+'Arrow').style.color = isUp ? '#4caf50' : '#f44336';
+            document.getElementById(prefix+'PriceDiff').textContent = (isUp?'+':'') + diff.toFixed(2);
+            document.getElementById(prefix+'PriceDiff').style.color = isUp ? '#4caf50' : '#f44336';
+            document.getElementById(prefix+'PricePct').textContent = (isUp?'+':'') + pct.toFixed(3) + '%';
+            document.getElementById(prefix+'PricePct').style.color = isUp ? '#4caf50' : '#f44336';
+            const fillEl = document.getElementById(prefix+'PriceFill');
+            const barPct = Math.min(Math.abs(pct) * 20, 100);
+            fillEl.style.width = (50 + (isUp ? barPct/2 : -barPct/2)) + '%';
+            fillEl.style.background = isUp ? '#4caf50' : '#f44336';
+            document.getElementById(prefix+'PriceCard').style.borderColor = isUp ? '#1a3a1a' : '#3a1a1a';
+        }
     }
 
-    function updateIndicatorUI(m) {
+    // ===== 지표 =====
+    async function refreshAllIndicators() {
+        for (const coin of ['BTC', 'ETH', 'SOL', 'XRP']) {
+            try {
+                const m = await fetch('/indicators?coin=' + coin).then(r => r.json());
+                indicatorCache[coin] = m;
+                // BTC/ETH는 레거시 필드, SOL/XRP는 coin* 범용 필드
+                if (coin === 'BTC') {
+                    if (m.btcHourOpen > 0) hourOpen.BTC = m.btcHourOpen;
+                    if (m.btc15mOpen > 0) open15m.BTC = m.btc15mOpen;
+                } else if (coin === 'ETH') {
+                    if (m.ethHourOpen > 0) hourOpen.ETH = m.ethHourOpen;
+                    if (m.eth15mOpen > 0) open15m.ETH = m.eth15mOpen;
+                } else {
+                    if (m.coinHourOpen > 0) hourOpen[coin] = m.coinHourOpen;
+                    if (m.coin15mOpen > 0) open15m[coin] = m.coin15mOpen;
+                }
+            } catch(e) {}
+        }
+        updateIndicatorUI();
+    }
+
+    function updateIndicatorUI() {
+        const m = indicatorCache[currentCoin];
         if (!m) return;
-        const isBtc = currentCoin === 'BTC';
-
-        // 펀딩비
         const fr = m.fundingRate || 0;
-        const frEl = document.getElementById('indFunding');
-        frEl.textContent = (fr>=0?'+':'') + fr.toFixed(4) + '%';
-        frEl.className = 'ind-value ' + (fr > 0.05 ? 'down' : fr < -0.05 ? 'up' : 'neutral');
+        document.getElementById('indFunding').textContent = (fr>=0?'+':'') + fr.toFixed(4) + '%';
+        document.getElementById('indFunding').className = 'ind-value ' + (fr > 0.05 ? 'down' : fr < -0.05 ? 'up' : 'neutral');
         document.getElementById('indFundingLabel').textContent = fr > 0.05 ? '롱 과열' : fr < -0.05 ? '숏 과열' : '중립';
-
-        // 공포탐욕
         const fg = m.fearGreedIndex || 50;
-        const fgEl = document.getElementById('indFG');
-        fgEl.textContent = fg;
-        fgEl.className = 'ind-value ' + (fg<=30?'up':fg>=70?'down':'neutral');
+        document.getElementById('indFG').textContent = fg;
+        document.getElementById('indFG').className = 'ind-value ' + (fg<=30?'up':fg>=70?'down':'neutral');
         document.getElementById('indFGLabel').textContent = m.fearGreedLabel || '-';
-
-        // 1H 변화율
-        const c1 = isBtc ? (m.btcChange1h||0) : (m.ethChange1h||0);
-        const c1El = document.getElementById('indChange1h');
-        c1El.textContent = '1H: ' + (c1>=0?'+':'') + c1.toFixed(2) + '%';
-        c1El.className = 'ind-sub ' + (c1>=0?'up':'down');
-
-        // 상대 코인
-        const ref = isBtc ? (m.ethChange1h||0) : (m.btcChange1h||0);
-        const refEl = document.getElementById('indRef');
-        refEl.textContent = (ref>=0?'+':'') + ref.toFixed(2) + '%';
-        refEl.className = 'ind-value ' + (ref>=0?'up':'down');
-        document.getElementById('indTrend').textContent = '추세: ' + (m.trend||'-');
-
-        // OI
         const oi = m.openInterestChange || 0;
-        const oiEl = document.getElementById('indOI');
-        oiEl.textContent = (oi>=0?'+':'') + oi.toFixed(2) + '%';
-        oiEl.className = 'ind-value ' + (oi>=0?'up':'down');
+        document.getElementById('indOI').textContent = (oi>=0?'+':'') + oi.toFixed(2) + '%';
+        document.getElementById('indOI').className = 'ind-value ' + (oi>=0?'up':'down');
         document.getElementById('indLS').textContent = 'L/S: ' + (m.longShortRatio||'-');
+        const trend = m.trend || 'SIDEWAYS';
+        document.getElementById('indTrend').textContent = trend === 'UPTREND' ? '📈 UP' : trend === 'DOWNTREND' ? '📉 DOWN' : '➡️ 횡보';
+        document.getElementById('indTrend').className = 'ind-value ' + (trend==='UPTREND'?'up':trend==='DOWNTREND'?'down':'neutral');
+        document.getElementById('indTrendSub').textContent = currentCoin + ' 종합';
+        const rsi = m.rsi || 50;
+        document.getElementById('indRSI').textContent = rsi.toFixed(1);
+        document.getElementById('indRSI').className = 'ind-value ' + (rsi>=70?'down':rsi<=30?'up':'neutral');
+        document.getElementById('indRSILabel').textContent = rsi>=70?'과매수':rsi<=30?'과매도':'중립';
     }
 
     // ===== 통계 =====
-    async function refreshStats(coin) {
+    async function refreshStats(coin, timeframe, prefix) {
+        const p = prefix || coin.toLowerCase();
+        const tfParam = timeframe ? '&timeframe=' + timeframe : '';
         try {
-            const s = await fetch('/stats?coin=' + coin).then(r => r.json());
-            document.getElementById('statTotal').textContent = s.total||0;
-            document.getElementById('statWinRate').textContent = (s.winRate||'0')+'%';
+            const s = await fetch('/stats?coin=' + coin + tfParam).then(r => r.json());
+            document.getElementById(p + 'StatTotal').textContent = s.total||0;
+            document.getElementById(p + 'StatWinRate').textContent = (s.winRate||'0')+'%';
             const pnl = parseFloat(s.pnl||0);
-            const pnlEl = document.getElementById('statPnl');
-            pnlEl.textContent = (pnl>=0?'+$':'$') + Math.abs(pnl).toFixed(2);
-            pnlEl.style.color = pnl>=0?'#4caf50':'#f44336';
-            document.getElementById('statWins').textContent = s.wins||0;
-            document.getElementById('statResolved').textContent = s.resolved||0;
+            const pnlEl = document.getElementById(p + 'StatPnl');
+            pnlEl.textContent = (pnl>=0?'+$':'-$') + Math.abs(pnl).toFixed(2);
+            pnlEl.style.color = pnl >= 0 ? '#4caf50' : '#f44336';
+            document.getElementById(p + 'StatWins').textContent = s.wins||0;
+            document.getElementById(p + 'StatResolved').textContent = s.resolved||0;
+        } catch(e) {}
+    }
 
-            // 전체 PNL
-            const totalPnl = await fetch('/stats').then(r=>r.json()).then(d=>d.pnl||0);
-            document.getElementById('pnlTotal').textContent = 'PNL: $' + parseFloat(totalPnl).toFixed(2);
-
-            // 패턴
-            const grid = document.getElementById('patternGrid');
-            const patterns = s.patterns || {};
-            const keys = Object.keys(patterns);
-            grid.innerHTML = keys.length === 0
-                ? '<div class="pattern-item"><span class="pattern-label">데이터 쌓이는 중...</span></div>'
-                : keys.map(k => `<div class="pattern-item"><span class="pattern-label">${k}</span><span class="pattern-value">${patterns[k]}</span></div>`).join('');
+    async function refreshAllStats() {
+        await refreshStats('BTC', '1H', 'btc');
+        await refreshStats('ETH', '1H', 'eth');
+        await refreshStats('SOL', '1H', 'sol');
+        await refreshStats('XRP', '1H', 'xrp');
+        await refreshStats('BTC', '15M', 'btc15m');
+        await refreshStats('ETH', '15M', 'eth15m');
+        await refreshStats('SOL', '15M', 'sol15m');
+        await refreshStats('XRP', '15M', 'xrp15m');
+        await refreshStats('BTC', '5M', 'btc5m');
+        await refreshStats('ETH', '5M', 'eth5m');
+        await refreshStats('SOL', '5M', 'sol5m');
+        await refreshStats('XRP', '5M', 'xrp5m');
+        // 탭 카운트
+        try {
+            const h1 = ['btc','eth','sol','xrp'].reduce((s,p) => s + (parseInt(document.getElementById(p+'StatTotal')?.textContent)||0), 0);
+            const m15 = ['btc15m','eth15m','sol15m','xrp15m'].reduce((s,p) => s + (parseInt(document.getElementById(p+'StatTotal')?.textContent)||0), 0);
+            const m5 = ['btc5m','eth5m','sol5m','xrp5m'].reduce((s,p) => s + (parseInt(document.getElementById(p+'StatTotal')?.textContent)||0), 0);
+            document.getElementById('tab1hCount').textContent = h1 > 0 ? ` (${h1})` : '';
+            document.getElementById('tab15mCount').textContent = m15 > 0 ? ` (${m15})` : '';
+            document.getElementById('tab5mCount').textContent = m5 > 0 ? ` (${m5})` : '';
         } catch(e) {}
     }
 
     // ===== 배팅 기록 =====
-    async function refreshTrades(coin) {
+    function renderTradeRow(t) {
+        const isHold = t.action === 'HOLD';
+        const dir = t.action==='BUY_YES' ? '<span class="tag tag-up">UP ⬆</span>'
+            : t.action==='BUY_NO' ? '<span class="tag tag-down">DOWN ⬇</span>'
+            : '<span class="tag tag-hold">HOLD ⏸</span>';
+        const res = t.result==='WIN' ? '<span class="tag tag-win">WIN ✅</span>'
+            : t.result==='LOSE' ? '<span class="tag tag-lose">LOSE ❌</span>'
+            : t.result==='HOLD' ? '<span class="tag tag-hold">HOLD</span>'
+            : '<span class="tag tag-pending">PENDING ⏳</span>';
+        const dt = new Date(t.createdAt).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const reason = t.reason || '';
+        const evMatch = reason.match(/EV: ([+-][\d.]+%)/);
+        const ev = evMatch ? evMatch[1] : '-';
+        const priceFmt = {minimumFractionDigits:2, maximumFractionDigits:2};
+        // 시초가
+        const open = t.openPrice ? '$' + t.openPrice.toLocaleString('en-US', priceFmt) : '<span style="color:#444;">-</span>';
+        // 진입가
+        const entry = t.entryPrice ? '$' + t.entryPrice.toLocaleString('en-US', priceFmt) : '-';
+        // 종가 (exit)
+        let exitCell = '<span style="color:#666;">-</span>';
+        if (t.exitPrice) {
+            const exitFmt = '$' + t.exitPrice.toLocaleString('en-US', priceFmt);
+            const diff = t.exitPrice - (t.openPrice || t.entryPrice || 0);
+            const diffColor = diff >= 0 ? '#4caf50' : '#f44336';
+            const diffSign = diff >= 0 ? '▲' : '▼';
+            exitCell = `<span style="color:${diffColor};">${exitFmt} ${diffSign}</span>`;
+        } else if (t.result === 'PENDING') {
+            const created = new Date(t.createdAt);
+            const candleClose = new Date(created);
+            const tf = t.timeframe || '1H';
+            if (tf === '15M') {
+                const minute = created.getMinutes();
+                const windowStart = Math.floor(minute / 15) * 15;
+                candleClose.setMinutes(windowStart + 15, 0, 0);
+            } else {
+                candleClose.setMinutes(0, 0, 0);
+                candleClose.setHours(candleClose.getHours() + 1);
+            }
+            const now = new Date();
+            if (now < candleClose) {
+                const remainMin = Math.ceil((candleClose - now) / 60000);
+                const label = tf === '15M' ? '마감' : '정시';
+                exitCell = `<span style="color:#ff9800; font-size:9px;">${label} ${remainMin}분 전</span>`;
+            } else {
+                exitCell = '<span style="color:#ff9800; font-size:9px;">판정 중...</span>';
+            }
+        }
+        const tradeId = t.id || 0;
+        const hasReason = reason && reason.length > 5;
+        const expandIcon = hasReason ? '<span style="font-size:9px; color:#444; margin-left:2px;">💬</span>' : '';
+        const rowStyle = isHold ? ' style="opacity:0.5;"' : '';
+        return `<tr class="trade-row" data-trade-id="${tradeId}" onclick="toggleTradeDetail(this, ${tradeId})"${rowStyle}><td>${dt}${expandIcon}</td><td>${dir}</td><td style="color:#888; font-size:10px;">${open}</td><td>${entry}</td><td>${isHold ? '<span style="color:#555;">-</span>' : exitCell}</td><td>${isHold ? '-' : '$'+(t.betAmount||0).toFixed(2)}</td><td>${t.confidence||0}%</td><td style="color:#64b5f6">${ev}</td><td>${res}</td><td style="color:${(t.profitLoss||0)>=0?'#4caf50':'#f44336'}">${isHold ? '-' : (t.profitLoss!=null?(t.profitLoss>=0?'+$':'-$')+Math.abs(t.profitLoss).toFixed(2):'-')}</td></tr>`;
+    }
+
+    // ===== 배팅 상세 패널 (클릭 펼침) =====
+    let openDetailId = null;
+    async function toggleTradeDetail(rowEl, tradeId) {
+        // 이미 열린 상세 닫기
+        const existing = rowEl.nextElementSibling;
+        if (existing && existing.classList.contains('trade-detail-row')) {
+            existing.remove();
+            rowEl.classList.remove('expanded');
+            openDetailId = null;
+            return;
+        }
+        // 다른 열린 상세 모두 닫기
+        document.querySelectorAll('tr.trade-detail-row').forEach(r => {
+            r.previousElementSibling?.classList.remove('expanded');
+            r.remove();
+        });
+        if (tradeId === 0) return;
+        rowEl.classList.add('expanded');
+        openDetailId = tradeId;
+
+        // 로딩 행 삽입
+        const colCount = rowEl.children.length;
+        const loadingRow = document.createElement('tr');
+        loadingRow.className = 'trade-detail-row';
+        loadingRow.innerHTML = `<td colspan="${colCount}"><div class="trade-detail" style="text-align:center; color:#555; padding:20px;">⏳ 분석 로딩 중...</div></td>`;
+        rowEl.after(loadingRow);
+
         try {
-            const trades = await fetch('/trades?coin=' + coin).then(r => r.json());
-            document.getElementById('tradeTable').innerHTML = trades.map(t => {
-                const dir = t.action==='BUY_YES' ? '<span class="tag tag-up">UP ⬆</span>'
-                    : t.action==='BUY_NO' ? '<span class="tag tag-down">DOWN ⬇</span>'
-                    : '<span class="tag tag-hold">HOLD</span>';
-                const res = t.result==='WIN' ? '<span class="tag tag-win">WIN ✅</span>'
-                    : t.result==='LOSE' ? '<span class="tag tag-lose">LOSE ❌</span>'
-                    : '<span class="tag tag-pending">PENDING</span>';
-                const coinTag = t.coin==='BTC'
-                    ? '<span class="tag tag-btc">₿BTC</span>'
-                    : '<span class="tag tag-eth">ΞETH</span>';
-                const dt = new Date(t.createdAt).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-                const reason = t.reason || '';
-                const evMatch = reason.match(/EV: ([+-][\d.]+%)/);
-                const ev = evMatch ? evMatch[1] : '-';
-                return `<tr title="${reason}">
-                    <td>${t.id}</td><td>${dt}</td><td>${coinTag}</td><td>${dir}</td>
-                    <td>$${(t.entryPrice||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                    <td>$${(t.betAmount||0).toFixed(2)}</td>
-                    <td>${t.confidence||0}%</td>
-                    <td style="color:#64b5f6">${ev}</td>
-                    <td>${t.fundingRate!=null?(t.fundingRate>=0?'+':'')+t.fundingRate.toFixed(4)+'%':'-'}</td>
-                    <td>${t.fearGreedIndex||'-'}</td>
-                    <td>${res}</td>
-                    <td style="color:${(t.profitLoss||0)>=0?'#4caf50':'#f44336'}">${t.profitLoss!=null?(t.profitLoss>=0?'+$':'$')+Math.abs(t.profitLoss).toFixed(2):'-'}</td>
-                </tr>`;
-            }).join('');
+            const data = await fetch('/trade/' + tradeId + '/analysis').then(r => r.json());
+            if (openDetailId !== tradeId) return; // 사용자가 이미 닫았으면 무시
+
+            let html = '<div class="trade-detail">';
+
+            // 메타 칩들
+            html += '<div class="detail-meta" style="margin-bottom:10px;">';
+            if (data.coin) html += `<span class="detail-chip" style="color:${data.coin==='BTC'?'#f7931a':'#627eea'};">${data.coin} ${data.timeframe||'1H'}</span>`;
+            if (data.confidence) html += `<span class="detail-chip">확신도 ${data.confidence}%</span>`;
+            if (data.fundingRate != null) html += `<span class="detail-chip">펀딩 ${data.fundingRate >= 0 ? '+' : ''}${data.fundingRate.toFixed(4)}%</span>`;
+            if (data.fearGreedIndex) html += `<span class="detail-chip">공포탐욕 ${data.fearGreedIndex}</span>`;
+            if (data.buyOdds && data.buyOdds > 0) html += `<span class="detail-chip" style="background:#e040fb22;color:#e040fb">매수오즈 ${(data.buyOdds*100).toFixed(1)}¢</span>`;
+            if (data.marketTrend) html += `<span class="detail-chip">${data.marketTrend}</span>`;
+            if (data.openInterestChange != null) html += `<span class="detail-chip">OI ${data.openInterestChange >= 0 ? '+' : ''}${data.openInterestChange.toFixed(2)}%</span>`;
+            if (data.buyOdds && data.buyOdds > 0) html += `<span class="detail-chip" style="background:#1a237e">매수 ${(data.buyOdds*100).toFixed(1)}¢</span>`;
+            if (data.buyOdds && data.buyOdds > 0) html += `<span class="detail-chip" style="background:#e040fb22;color:#e040fb">매수오즈 ${(data.buyOdds*100).toFixed(1)}¢</span>`;
+            html += '</div>';
+
+            // Claude 판단 이유
+            if (data.reason) {
+                html += '<div class="detail-section">';
+                html += '<div class="detail-label">🧠 Claude 판단</div>';
+                html += `<div class="detail-reason">${escapeHtml(data.reason)}</div>`;
+                html += '</div>';
+            }
+
+            // Claude 원본 분석 (접기/펼치기)
+            if (data.claudeAnalysis) {
+                html += '<div class="detail-section">';
+                html += `<div class="detail-label" style="cursor:pointer; color:#64b5f6;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">📋 Claude 원본 응답 ▸ 클릭하여 펼치기</div>`;
+                html += `<div class="detail-reason" style="display:none; margin-top:6px; padding:10px; background:#111; border-radius:4px; border:1px solid #222; font-size:11px; color:#999; max-height:300px; overflow-y:auto;">${escapeHtml(data.claudeAnalysis)}</div>`;
+                html += '</div>';
+            }
+
+            // 반성 기록
+            if (data.reflection) {
+                html += '<div class="detail-section">';
+                html += '<div class="detail-label">🪞 AI 반성</div>';
+                html += `<div class="detail-reflection">${escapeHtml(data.reflection)}</div>`;
+                html += '</div>';
+            }
+
+            // 데이터 없는 경우
+            if (!data.reason && !data.claudeAnalysis && !data.reflection) {
+                html += '<div style="color:#444; font-size:11px; text-align:center; padding:10px;">분석 데이터 없음</div>';
+            }
+
+            html += '</div>';
+            loadingRow.innerHTML = `<td colspan="${colCount}">${html}</td>`;
+        } catch(e) {
+            loadingRow.innerHTML = `<td colspan="${colCount}"><div class="trade-detail" style="color:#f44336; text-align:center;">⚠️ 로딩 실패</div></td>`;
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    }
+
+    async function refreshTrades(coin, timeframe, tableId) {
+        const tid = tableId || coin.toLowerCase() + 'TradeTable';
+        const tfParam = timeframe ? '&timeframe=' + timeframe : '';
+        try {
+            const tbody = document.getElementById(tid);
+            // 이 테이블에 열린 상세 패널이 있으면 새로고침 스킵
+            if (tbody.querySelector('tr.trade-detail-row')) return;
+
+            const trades = await fetch('/trades?coin=' + coin + tfParam).then(r => r.json());
+            tbody.innerHTML = trades.map(renderTradeRow).join('');
         } catch(e) {}
     }
 
-    // ===== 봇 상태 =====
-    async function refreshBotStatus() {
-        try {
-            const r = await fetch('/bot/status').then(r=>r.json());
-            const badge = document.getElementById('botBadge');
-            badge.textContent = r.running ? 'LIVE' : 'OFFLINE';
-            badge.className = 'badge ' + (r.running ? 'live' : 'offline');
-        } catch(e) {}
+    async function refreshAllTrades() {
+        await refreshTrades('BTC', '1H', 'btcTradeTable');
+        await refreshTrades('ETH', '1H', 'ethTradeTable');
+        await refreshTrades('SOL', '1H', 'solTradeTable');
+        await refreshTrades('XRP', '1H', 'xrpTradeTable');
+        await refreshTrades('BTC', '15M', 'btc15mTradeTable');
+        await refreshTrades('ETH', '15M', 'eth15mTradeTable');
+        await refreshTrades('SOL', '15M', 'sol15mTradeTable');
+        await refreshTrades('XRP', '15M', 'xrp15mTradeTable');
+        await refreshTrades('BTC', '5M', 'btc5mTradeTable');
+        await refreshTrades('ETH', '5M', 'eth5mTradeTable');
+        await refreshTrades('SOL', '5M', 'sol5mTradeTable');
+        await refreshTrades('XRP', '5M', 'xrp5mTradeTable');
     }
 
     // ===== 버튼 =====
-    async function botStart() { await fetch('/bot/start',{method:'POST'}); refreshBotStatus(); }
-    async function botStop() { await fetch('/bot/stop',{method:'POST'}); refreshBotStatus(); }
-    async function runOnce() {
-        addLog('⚡ BTC/ETH 1회 실행 요청...');
-        await fetch('/trade/run',{method:'POST'});
-    }
-    async function updateResult() {
-        const id = document.getElementById('resultId').value;
-        const result = document.getElementById('resultSelect').value;
-        const exitPrice = document.getElementById('resultExitPrice').value;
-        if (!id) { alert('Trade ID를 입력하세요'); return; }
-        await fetch(`/trade/${id}/result?result=${result}&exitPrice=${exitPrice||0}`,{method:'POST'});
-        addLog(`📊 Trade #${id} 결과: ${result}`);
-        refreshTrades(currentCoin); refreshStats(currentCoin);
+    async function runOnce(coin, timeframe) {
+        addLog(`⚡ ${coin} ${timeframe} 1회 실행 요청...`);
+        await fetch('/trade/run?coin=' + coin + '&timeframe=' + timeframe, {method:'POST'});
     }
 
-    // ===== 챗봇 =====
-    function quickAsk(text) { document.getElementById('chatInput').value = text; sendChat(); }
-    async function sendChat() {
-        const input = document.getElementById('chatInput');
-        const text = input.value.trim();
-        if (!text) return;
-        input.value = '';
-        appendMsg('user', text);
-        try {
-            const r = await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})}).then(r=>r.json());
-            appendMsg('bot', r.reply || r.error || '오류');
-        } catch(e) { appendMsg('bot', '연결 오류'); }
+    async function deleteAllTrades() {
+        if (!confirm('배팅 기록을 전부 삭제할까요?')) return;
+        const res = await fetch('/trades/all', {method:'DELETE'});
+        const data = await res.json();
+        addLog(`🗑️ ${data.count}건 삭제 완료`);
+        refreshAllStats();
+        refreshAllTrades();
     }
-    function appendMsg(role, text) {
-        const box = document.getElementById('chatMessages');
-        const div = document.createElement('div');
-        div.className = 'msg ' + role;
-        div.textContent = text;
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
+
+    // ===== 1H 트리거 =====
+    function renderTriggers(coin, config) {
+        const isBtc = coin === 'BTC';
+        const color = isBtc ? '#f7931a' : '#627eea';
+        const infoId = isBtc ? 'btcTriggerInfo' : 'ethTriggerInfo';
+        const sourceId = isBtc ? 'btcTriggerSource' : 'ethTriggerSource';
+        const hasPending = config.pending != null;
+        const src = config.source || '기본값';
+        const isAnalyzed = src.includes('분석');
+        let updatedLabel = '';
+        if (config.updatedAt) {
+            const d = new Date(config.updatedAt);
+            const now = new Date();
+            const diffMin = Math.floor((now - d) / 60000);
+            let ago = diffMin < 1 ? '방금' : diffMin < 60 ? diffMin + '분 전' : diffMin < 1440 ? Math.floor(diffMin / 60) + '시간 전' : Math.floor(diffMin / 1440) + '일 전';
+            const timeStr = d.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+            updatedLabel = `<span style="font-size:9px; color:#444; margin-left:4px;">🕐 ${timeStr} (${ago})</span>`;
+        }
+        document.getElementById(sourceId).innerHTML = hasPending
+            ? `<span style="color:${color};">⏳ 대기</span> → 정각 적용`
+            : `<span style="color:${isAnalyzed ? '#4caf50' : '#555'};">${src}</span>${updatedLabel}`;
+        const triggers = config.triggers || [];
+        const labels = ['🔍 탐색', '✅ 확인'];
+        const nowMin = new Date().getMinutes();
+        let html = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">`;
+        html += triggers.map((t, i) => {
+            const acc = t.accuracy ? (t.accuracy * 100).toFixed(0) : null;
+            const ev = (t.evThreshold * 100).toFixed(0);
+            const isNow = t.minute === nowMin;
+            const isPast = t.minute < nowMin;
+            const border = isNow ? color : isPast ? '#333' : color + '50';
+            const opacity = isPast ? '0.35' : '1';
+            const glow = isNow ? `box-shadow:0 0 12px ${color}50;` : '';
+            return `<div style="padding:10px 8px; border-radius:6px; background:#1a1a1a; border:1px solid ${border}; opacity:${opacity}; text-align:center; ${glow}">
+                <div style="font-size:10px; color:#888; margin-bottom:2px;">${labels[i]}</div>
+                <div style="font-size:24px; font-weight:bold; color:${color}; line-height:1.3;">${String(t.minute).padStart(2,'0')+'분'}</div>
+                <div style="font-size:10px; color:#666; margin-top:3px;">EV &gt; ${ev}%${acc ? ' · '+acc+'%' : ''}</div>
+            </div>`;
+        }).join('');
+        html += `</div>`;
+        if (hasPending) {
+            html += `<div style="margin-top:6px; font-size:10px; color:#555; display:flex; gap:6px; align-items:center;">
+                ⏳ ${config.pending.map((t, i) => `<span style="padding:2px 6px; border:1px dashed #444; border-radius:3px; color:#666;">${labels[i]} :${String(t.minute).padStart(2,'0')}</span>`).join('')}
+            </div>`;
+        }
+        document.getElementById(infoId).innerHTML = html;
+    }
+
+    // ===== 15M 트리거 =====
+    function renderTriggers15m(coin, config) {
+        const isBtc = coin.startsWith('BTC');
+        const color = isBtc ? '#f7931a' : '#627eea';
+        const prefix = isBtc ? 'btc15m' : 'eth15m';
+        const infoId = prefix + 'TriggerInfo';
+        const sourceId = prefix + 'TriggerSource';
+        const src = config.source || '기본값';
+        const isAnalyzed = src.includes('분석');
+        let updatedLabel = '';
+        if (config.updatedAt) {
+            const d = new Date(config.updatedAt);
+            const now = new Date();
+            const diffMin = Math.floor((now - d) / 60000);
+            let ago = diffMin < 1 ? '방금' : diffMin < 60 ? diffMin + '분 전' : Math.floor(diffMin / 60) + '시간 전';
+            const timeStr = d.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+            updatedLabel = `<span style="font-size:9px; color:#444; margin-left:4px;">🕐 ${timeStr} (${ago})</span>`;
+        }
+        document.getElementById(sourceId).innerHTML =
+            `<span style="color:${isAnalyzed ? '#4caf50' : '#555'};">${src}</span>${updatedLabel}`;
+        const triggers = config.triggers || [];
+        const labels = ['🔍 탐색', '✅ 확인'];
+        const nowMin = new Date().getMinutes();
+        const windowOffset = nowMin % 15;
+        let html = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">`;
+        html += triggers.map((t, i) => {
+            const ev = (t.evThreshold * 100).toFixed(0);
+            const isNow = t.minute === windowOffset;
+            const isPast = t.minute < windowOffset;
+            const border = isNow ? color : isPast ? '#333' : color + '50';
+            const opacity = isPast ? '0.35' : '1';
+            const glow = isNow ? `box-shadow:0 0 12px ${color}50;` : '';
+            return `<div style="padding:10px 8px; border-radius:6px; background:#1a1a1a; border:1px solid ${border}; opacity:${opacity}; text-align:center; ${glow}">
+                <div style="font-size:10px; color:#888; margin-bottom:2px;">${labels[i]}</div>
+                <div style="font-size:24px; font-weight:bold; color:${color}; line-height:1.3;">${t.minute}분</div>
+                <div style="font-size:10px; color:#666; margin-top:3px;">EV &gt; ${ev}%</div>
+            </div>`;
+        }).join('');
+        html += `</div>`;
+        document.getElementById(infoId).innerHTML = html;
+    }
+
+    async function loadTriggers() {
+        try {
+            const res = await fetch('/trigger-config/all');
+            const data = await res.json();
+            if (data.BTC) renderTriggers('BTC', data.BTC);
+            if (data.ETH) renderTriggers('ETH', data.ETH);
+            if (data.BTC_15M) renderTriggers15m('BTC_15M', data.BTC_15M);
+            if (data.ETH_15M) renderTriggers15m('ETH_15M', data.ETH_15M);
+        } catch(e) {}
+    }
+
+    // ===== 잔액 =====
+    async function refreshBalance() {
+        try {
+            const d = await fetch('/balance').then(r => r.json());
+            const bal = d.balance, ini = d.initial, pnl = d.profitLoss, pct = d.profitPct;
+            const isUp = pnl >= 0;
+            const lBtc = d.lockedBtc || 0, lEth = d.lockedEth || 0;
+            const totalLocked = lBtc + lEth;
+            const totalAsset = bal + totalLocked;
+            const totalIsUp = totalAsset >= ini;
+            const hdr = document.getElementById('balanceDisplay');
+            hdr.textContent = '💎 $' + totalAsset.toFixed(2);
+            hdr.style.color = totalIsUp ? '#64b5f6' : '#f44336';
+            hdr.style.background = totalIsUp ? '#0a0a1a' : '#1a0a0a';
+            hdr.style.borderColor = totalIsUp ? '#1a1a3a' : '#3a1a1a';
+            document.getElementById('portInitial').textContent = '$' + ini.toFixed(2);
+            const curEl = document.getElementById('portCurrent');
+            curEl.textContent = '$' + bal.toFixed(2);
+            curEl.style.color = isUp ? '#4caf50' : '#f44336';
+            const pctEl = document.getElementById('portPnlPct');
+            pctEl.textContent = (isUp ? '+' : '') + pct.toFixed(1) + '%';
+            pctEl.style.color = isUp ? '#4caf50' : '#f44336';
+            const absEl = document.getElementById('portPnlAbs');
+            absEl.textContent = (isUp ? '+$' : '-$') + Math.abs(pnl).toFixed(2);
+            absEl.style.color = isUp ? '#4caf50' : '#f44336';
+            const barPct = Math.max(0, Math.min(100, (bal / ini) * 50));
+            const bar = document.getElementById('portBar');
+            bar.style.width = barPct + '%';
+            bar.style.background = isUp ? 'linear-gradient(90deg, #1b5e20, #4caf50)' : 'linear-gradient(90deg, #f44336, #b71c1c)';
+            document.getElementById('portBarLabel').textContent = '$' + bal.toFixed(2);
+            document.getElementById('lockedBtc').textContent = '$' + lBtc.toFixed(2);
+            document.getElementById('lockedEth').textContent = '$' + lEth.toFixed(2);
+            document.getElementById('pendingCount').textContent = (d.pendingCount || 0) + '건 진행 중';
+            document.getElementById('portTotal').textContent = '$' + totalAsset.toFixed(2);
+            document.getElementById('portTotal').style.color = totalIsUp ? '#64b5f6' : '#f44336';
+            document.getElementById('portTotalSub').textContent = '잔액 $' + bal.toFixed(2) + ' + 배팅 $' + totalLocked.toFixed(2);
+            document.getElementById('portTotalBox').style.borderColor = totalIsUp ? '#1a1a3a' : '#3a1a1a';
+            document.getElementById('portfolioCard').style.borderColor = isUp ? '#1a3a1a' : '#3a1a1a';
+            document.getElementById('pnlTotal').textContent = 'PNL: ' + (isUp?'+$':'-$') + Math.abs(pnl).toFixed(2);
+            document.getElementById('pnlTotal').style.color = isUp ? '#4caf50' : '#f44336';
+        } catch(e) {}
+    }
+
+    // ===== 이퀄리티 커브 =====
+    async function drawEquityCurve() {
+        const infoEl = document.getElementById('equityCurveInfo');
+        try {
+            const resp = await fetch('/balance/history');
+            if (!resp.ok) { infoEl.textContent = '⚠️ API 오류: ' + resp.status; return; }
+            const history = await resp.json();
+            if (!history || !Array.isArray(history)) { infoEl.textContent = '⚠️ 데이터 형식 오류'; return; }
+            if (history.length < 2) { infoEl.textContent = '배팅 후 그래프 표시 (현재 ' + history.length + '건)'; return; }
+            const canvas = document.getElementById('equityCanvas');
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+            const pad = { top: 20, right: 20, bottom: 25, left: 50 };
+            ctx.clearRect(0, 0, W, H);
+            const balances = history.map(p => p.balance);
+            const minB = Math.min(...balances) * 0.95;
+            const maxB = Math.max(...balances) * 1.05;
+            const range = maxB - minB || 1;
+            const initial = balances[0];
+            const chartW = W - pad.left - pad.right;
+            const chartH = H - pad.top - pad.bottom;
+            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+            ctx.font = '10px monospace'; ctx.fillStyle = '#444';
+            for (let i = 0; i <= 4; i++) {
+                const y = pad.top + (chartH / 4) * i;
+                const val = maxB - (range / 4) * i;
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+                ctx.fillText('$' + val.toFixed(1), 4, y + 4);
+            }
+            const iniY = pad.top + chartH * (1 - (initial - minB) / range);
+            ctx.strokeStyle = '#333'; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(pad.left, iniY); ctx.lineTo(W - pad.right, iniY); ctx.stroke();
+            ctx.setLineDash([]); ctx.fillStyle = '#555'; ctx.fillText('원금', W - pad.right - 25, iniY - 4);
+            const points = history.map((p, i) => ({
+                x: pad.left + (chartW / (history.length - 1)) * i,
+                y: pad.top + chartH * (1 - (p.balance - minB) / range),
+                event: p.event, coin: p.coin, balance: p.balance
+            }));
+            ctx.beginPath(); ctx.moveTo(points[0].x, iniY);
+            points.forEach(p => ctx.lineTo(p.x, Math.min(p.y, iniY)));
+            ctx.lineTo(points[points.length-1].x, iniY); ctx.closePath();
+            ctx.fillStyle = 'rgba(76,175,80,0.08)'; ctx.fill();
+            ctx.beginPath(); ctx.moveTo(points[0].x, iniY);
+            points.forEach(p => ctx.lineTo(p.x, Math.max(p.y, iniY)));
+            ctx.lineTo(points[points.length-1].x, iniY); ctx.closePath();
+            ctx.fillStyle = 'rgba(244,67,54,0.08)'; ctx.fill();
+            ctx.beginPath();
+            ctx.strokeStyle = balances[balances.length-1] >= initial ? '#4caf50' : '#f44336';
+            ctx.lineWidth = 2;
+            points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+            points.forEach(p => {
+                if (p.event === 'START') return;
+                let color = p.event === 'WIN' ? '#4caf50' : p.event === 'LOSE' ? '#f44336' : p.coin === 'BTC' ? '#f7931a' : '#627eea';
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.event==='WIN'||p.event==='LOSE'?4:3, 0, Math.PI * 2);
+                ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 1; ctx.stroke();
+            });
+            const lastP = points[points.length - 1];
+            ctx.fillStyle = balances[balances.length-1] >= initial ? '#4caf50' : '#f44336';
+            ctx.font = 'bold 12px monospace';
+            ctx.fillText('$' + lastP.balance.toFixed(2), lastP.x - 30, lastP.y - 8);
+            const wins = history.filter(p => p.event === 'WIN').length;
+            const loses = history.filter(p => p.event === 'LOSE').length;
+            const bets = history.filter(p => p.event === 'BET').length;
+            infoEl.textContent = `${bets}건 배팅 · ${wins}W ${loses}L · 최고 $${Math.max(...balances).toFixed(2)} · 최저 $${Math.min(...balances).toFixed(2)}`;
+            updateScenario(wins, loses, balances[balances.length-1], balances[0]);
+        } catch(e) { infoEl.textContent = '⚠️ 오류: ' + e.message; }
+    }
+
+    function updateScenario(wins, loses, currentBal, initialBal) {
+        const total = wins + loses;
+        const el = document.getElementById('scenarioText');
+        if (total < 2) { el.innerHTML = '최소 2건 이상 결과 확정 후 예측 표시'; return; }
+        const winRate = wins / total;
+        const avgWin = currentBal > initialBal ? (currentBal - initialBal) / wins : initialBal * 0.04;
+        const avgLoss = loses > 0 ? Math.abs(currentBal - initialBal - wins * avgWin) / loses : initialBal * 0.05;
+        const avgBetPnl = winRate * avgWin - (1 - winRate) * avgLoss;
+        const expectedBets12h = 24;
+        const optimistic = currentBal + expectedBets12h * Math.abs(avgBetPnl) * 1.5;
+        const expected = currentBal + expectedBets12h * avgBetPnl;
+        const pessimistic = currentBal - expectedBets12h * Math.abs(avgBetPnl) * 0.5;
+        const fmt = v => (v >= 0 ? '$' : '-$') + Math.abs(v).toFixed(2);
+        const clr = v => v >= initialBal ? '#4caf50' : '#f44336';
+        el.innerHTML = `<div style="display:flex; gap:12px;">
+            <span>🟢 낙관: <b style="color:${clr(optimistic)}">${fmt(optimistic)}</b></span>
+            <span>🟡 예상: <b style="color:${clr(expected)}">${fmt(expected)}</b></span>
+            <span>🔴 비관: <b style="color:${clr(pessimistic)}">${fmt(Math.max(0, pessimistic))}</b></span>
+        </div><div style="font-size:9px; color:#444; margin-top:3px;">현재 승률 ${(winRate*100).toFixed(0)}% · 평균 배팅당 ${avgBetPnl >= 0 ? '+' : ''}$${avgBetPnl.toFixed(2)} · 12h 예상 ${expectedBets12h}건</div>`;
+    }
+
+    function refreshTimeMarkers() { loadTriggers(); }
+
+    // ===== 오즈 포맷 헬퍼 =====
+    function formatCents(v) {
+        if (v == null) return '50¢';
+        // 정수면 정수로, 아니면 소수점 1자리
+        return (v === Math.floor(v) ? v : v.toFixed(1)) + '¢';
+    }
+    function oddsBarWidth(pct) {
+        // 최소 3% 너비 보장 (극단값에서도 바가 보이도록)
+        return Math.max(3, Math.min(97, pct || 50)) + '%';
+    }
+    function oddsFontSize(cents) {
+        // 극단값일 때 폰트 살짝 줄임
+        if (cents != null && (cents <= 2 || cents >= 98)) return '18px';
+        return '24px';
+    }
+
+    // ===== 오즈 (벌크 API — 1초 폴링) =====
+    async function refreshOdds() {
+        const timeEl = document.getElementById('oddsTime');
+        timeEl.style.color = '#4caf50';
+        setTimeout(() => timeEl.style.color = '#444', 200);
+        try {
+            const data = await fetch('/odds/all').then(r => r.json());
+            const now = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+            // 1H 오즈 업데이트
+            if (data['1H']) {
+                for (const coin of ['BTC', 'ETH', 'SOL', 'XRP']) {
+                    const d = data['1H'][coin];
+                    if (!d) continue;
+                    const prefix = coin.toLowerCase();
+                    const upEl = document.getElementById(prefix + 'UpOdds');
+                    const downEl = document.getElementById(prefix + 'DownOdds');
+                    if (!upEl || !downEl) continue;
+                    upEl.textContent = formatCents(d.upCents);
+                    downEl.textContent = formatCents(d.downCents);
+                    upEl.style.fontSize = oddsFontSize(d.upCents);
+                    downEl.style.fontSize = oddsFontSize(d.downCents);
+                    const upBar = document.getElementById(prefix + 'UpBar');
+                    const downBar = document.getElementById(prefix + 'DownBar');
+                    if (upBar) upBar.style.width = oddsBarWidth(d.upPct);
+                    if (downBar) downBar.style.width = oddsBarWidth(d.downPct);
+                    const slugEl = document.getElementById(prefix + 'OddsSlug');
+                    if (slugEl) slugEl.textContent = (d.slug || '') + (d.spread > 0 ? '  |  스프레드: ' + d.spread + '¢' : '');
+                    const statusEl = document.getElementById(prefix + 'OddsStatus');
+                    if (statusEl) statusEl.innerHTML = d.available
+                        ? '<span style="color:#4caf50;">● LIVE</span>'
+                        : '<span style="color:#f44336;">● 마켓 없음</span>';
+                }
+            }
+            timeEl.textContent = now;
+
+            // 15M 오즈 업데이트
+            const time15mEl = document.getElementById('odds15mTime');
+            if (data['15M']) {
+                for (const coin of ['BTC', 'ETH', 'SOL', 'XRP']) {
+                    const d = data['15M'][coin];
+                    if (!d) continue;
+                    const prefix = coin.toLowerCase() + '15m';
+                    const upEl = document.getElementById(prefix + 'UpOdds');
+                    const downEl = document.getElementById(prefix + 'DownOdds');
+                    if (!upEl || !downEl) continue;
+                    upEl.textContent = formatCents(d.upCents);
+                    downEl.textContent = formatCents(d.downCents);
+                    upEl.style.fontSize = oddsFontSize(d.upCents);
+                    downEl.style.fontSize = oddsFontSize(d.downCents);
+                    const upBar = document.getElementById(prefix + 'UpBar');
+                    const downBar = document.getElementById(prefix + 'DownBar');
+                    if (upBar) upBar.style.width = oddsBarWidth(d.upPct);
+                    if (downBar) downBar.style.width = oddsBarWidth(d.downPct);
+                    const slugEl = document.getElementById(prefix + 'OddsSlug');
+                    if (slugEl) slugEl.textContent = d.slug || '';
+                    const statusEl = document.getElementById(prefix + 'OddsStatus');
+                    if (statusEl) statusEl.innerHTML = d.available
+                        ? '<span style="color:#4caf50;">● LIVE</span>'
+                        : '<span style="color:#f44336;">● 마켓 없음</span>';
+                }
+            }
+            if (time15mEl) time15mEl.textContent = now;
+
+            // 5M 오즈 업데이트
+            const time5mEl = document.getElementById('odds5mTime');
+            if (data['5M']) {
+                for (const coin of ['BTC', 'ETH', 'SOL', 'XRP']) {
+                    const d = data['5M'][coin];
+                    if (!d) continue;
+                    const prefix = coin.toLowerCase() + '5m';
+                    const upEl = document.getElementById(prefix + 'UpOdds');
+                    const downEl = document.getElementById(prefix + 'DownOdds');
+                    if (!upEl || !downEl) continue;
+                    upEl.textContent = formatCents(d.upCents);
+                    downEl.textContent = formatCents(d.downCents);
+                    upEl.style.fontSize = oddsFontSize(d.upCents);
+                    downEl.style.fontSize = oddsFontSize(d.downCents);
+                    const upBar = document.getElementById(prefix + 'UpBar');
+                    const downBar = document.getElementById(prefix + 'DownBar');
+                    if (upBar) upBar.style.width = oddsBarWidth(d.upPct);
+                    if (downBar) downBar.style.width = oddsBarWidth(d.downPct);
+                    const slugEl = document.getElementById(prefix + 'OddsSlug');
+                    if (slugEl) slugEl.textContent = d.slug || '';
+                    const statusEl = document.getElementById(prefix + 'OddsStatus');
+                    if (statusEl) statusEl.innerHTML = d.available
+                        ? '<span style="color:#4caf50;">● LIVE</span>'
+                        : '<span style="color:#f44336;">● 마켓 없음</span>';
+                }
+            }
+            if (time5mEl) time5mEl.textContent = now;
+        } catch(e) {
+            // 개별 상태 표시는 생략 — 전체 실패 시 다음 tick에서 복구
+        }
+    }
+
+    // ===== 오즈 갭 모니터 (1초 폴링) =====
+    let _lastGapHtml = '';
+    async function refreshGaps() {
+        try {
+            const data = await fetch('/gaps').then(r => r.json());
+            const grid = document.getElementById('gapGrid');
+            const coins = ['BTC', 'ETH', 'SOL', 'XRP'];
+            const timeframes = ['1H', '15M', '5M'];
+            const coinIcons = { BTC: '₿', ETH: 'Ξ', SOL: '◎', XRP: '✕' };
+            const coinColors = { BTC: '#f7931a', ETH: '#627eea', SOL: '#00d4aa', XRP: '#00aaff' };
+
+            let html = '';
+            let hasOpportunity = false;
+
+            for (const coin of coins) {
+                let cellHtml = `<div style="background:#111; border:1px solid #222; border-radius:8px; padding:10px;">`;
+                cellHtml += `<div style="color:${coinColors[coin]}; font-weight:bold; font-size:13px; margin-bottom:8px;">${coinIcons[coin]} ${coin}</div>`;
+
+                for (const tf of timeframes) {
+                    const key = coin + '_' + tf;
+                    const g = data[key];
+
+                    if (!g || g.age > 10) {
+                        cellHtml += `<div style="padding:4px 0; border-bottom:1px solid #1a1a1a;">
+                            <span style="font-size:10px; color:#444;">${tf} — 대기</span>
+                        </div>`;
+                        continue;
+                    }
+
+                    const dirIcon = g.direction === 'UP' ? '⬆' : '⬇';
+
+                    // === 순방향 갭 ===
+                    const fwdGapPct = g.gapPct || 0;
+                    const fwdColor = fwdGapPct >= 8 ? '#4caf50' : fwdGapPct > 0 ? '#2e7d32' : '#555';
+                    const fwdDots = g.streakSeconds >= 3 ? '🔥' : g.streakSeconds >= 1 ? '•'.repeat(g.streakSeconds) : '';
+
+                    // === ⭐ 역방향 갭 (핵심!) ===
+                    const revGapPct = g.reverseGapPct || 0;
+                    const revDir = g.reverseDirection || '';
+                    const revIcon = revDir === 'UP' ? '⬆' : revDir === 'DOWN' ? '⬇' : '';
+                    const isRevHot = revGapPct >= 10;
+                    const isRevBurning = revGapPct >= 15;
+                    if (isRevHot) hasOpportunity = true;
+                    if (fwdGapPct >= 8) hasOpportunity = true;
+
+                    const revColor = isRevBurning ? '#ff9800' : isRevHot ? '#e040fb' : revGapPct > 0 ? '#7b1fa2' : '#333';
+                    const revBg = isRevBurning ? '#1a1200' : isRevHot ? '#1a0a1a' : '#0d0d0d';
+                    const revGlow = isRevBurning ? 'box-shadow:0 0 8px #ff980030;' : '';
+                    const revDots = (g.reverseStreakSeconds || 0) >= 3 ? '🔥' : (g.reverseStreakSeconds || 0) >= 1 ? '•'.repeat(g.reverseStreakSeconds) : '';
+
+                    cellHtml += `<div style="padding:5px 0; border-bottom:1px solid #1a1a1a;">
+                        <div style="font-size:10px; color:#666; margin-bottom:3px;">${tf} ${dirIcon} ${g.priceDiffPct > 0 ? '+' : ''}${g.priceDiffPct.toFixed(2)}%</div>
+                        <div style="display:flex; justify-content:space-between; gap:6px;">
+                            <!-- 순방향 -->
+                            <div style="flex:1; background:#0d0d0d; border:1px solid ${fwdGapPct >= 8 ? '#4caf5040' : '#1a1a1a'}; border-radius:4px; padding:4px 6px; text-align:center;">
+                                <div style="font-size:8px; color:#555;">순방향${dirIcon}</div>
+                                <div style="font-size:14px; font-weight:bold; color:${fwdColor};">${fwdGapPct >= 0 ? '+' : ''}${fwdGapPct.toFixed(1)}%</div>
+                                <div style="font-size:8px; color:#444;">${fwdDots}</div>
+                            </div>
+                            <!-- 역방향 ⭐ -->
+                            <div style="flex:1; background:${revBg}; border:1px solid ${isRevHot ? revColor + '50' : '#1a1a1a'}; border-radius:4px; padding:4px 6px; text-align:center; ${revGlow}">
+                                <div style="font-size:8px; color:#888;">역방향${revIcon}</div>
+                                <div style="font-size:14px; font-weight:bold; color:${revColor};">${revGapPct >= 0 ? '+' : ''}${revGapPct.toFixed(1)}%</div>
+                                <div style="font-size:8px; color:#444;">${revDots}</div>
+                            </div>
+                        </div>
+                        <div style="font-size:8px; color:#333; margin-top:2px; text-align:center;">
+                            추정${(g.estimatedProb * 100).toFixed(0)}% vs 오즈${(g.marketOdds * 100).toFixed(0)}%
+                            ${isRevHot ? ' | 🔄역' + (g.reverseEstProb * 100).toFixed(0) + '% vs ' + (g.reverseMarketOdds * 100).toFixed(0) + '¢' : ''}
+                        </div>
+                    </div>`;
+                }
+
+                cellHtml += '</div>';
+                html += cellHtml;
+            }
+
+            if (html !== _lastGapHtml) { grid.innerHTML = html; _lastGapHtml = html; }
+            const badge = document.getElementById('gapAlertBadge');
+            badge.style.display = hasOpportunity ? 'inline' : 'none';
+            document.getElementById('gapTime').textContent =
+                new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        } catch(e) {}
+    }
+
+    // ===== AI 교훈 =====
+    async function refreshLessons() {
+        try {
+            const lessons = await fetch('/lessons').then(r => r.json());
+            const grid = document.getElementById('lessonsGrid');
+            if (!lessons || lessons.length === 0) {
+                grid.innerHTML = '<div style="color:#444; font-size:11px; padding:10px; grid-column:1/-1;">반성 5건 이상 누적 후 AI가 교훈을 자동 생성합니다</div>';
+                return;
+            }
+            grid.innerHTML = lessons.map(l => {
+                const imp = l.importance >= 0.8 ? '🔴' : l.importance >= 0.5 ? '🟡' : '⚪';
+                const catColor = {
+                    'RSI': '#ff6b6b', 'FUNDING': '#ffd93d', 'TIMING': '#6bcbff',
+                    'TREND': '#4caf50', 'STREAK': '#ff9800', 'OI': '#ce93d8', 'GENERAL': '#888'
+                }[l.category] || '#888';
+                const updated = l.updatedAt ? new Date(l.updatedAt).toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+                return `<div style="background:#111; border:1px solid #222; border-radius:6px; padding:10px 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:#1a1a1a; color:${catColor}; border:1px solid ${catColor}40;">${l.category}</span>
+                        <span style="font-size:9px; color:#444;">${imp} ${l.evidenceCount}건 근거</span>
+                    </div>
+                    <div style="font-size:11px; color:#ccc; line-height:1.5;">${l.lesson}</div>
+                    <div style="font-size:9px; color:#333; margin-top:4px;">${updated}</div>
+                </div>`;
+            }).join('');
+            document.getElementById('lessonsFooter').innerHTML =
+                `💡 ${lessons.length}개 교훈 활성 · 중요도순 정렬 · 매 판단에 자동 반영`;
+        } catch(e) {}
+    }
+
+    async function compressLessons() {
+        addLog('🧠 AI 교훈 압축 시작...');
+        await fetch('/lessons/compress', {method:'POST'});
+        setTimeout(refreshLessons, 8000); // 압축 완료 후 새로고침
+    }
+
+    // ===== ⭐ V5: 갭스캐너 실시간 활동 로그 =====
+    const coinColors2 = { BTC: '#f7931a', ETH: '#627eea', SOL: '#00d4aa', XRP: '#00aaff' };
+    let _lastScanHtml = '';
+    async function refreshScanLogs() {
+        try {
+            const logs = await fetch('/scan-logs').then(r => r.json());
+            const box = document.getElementById('scanLogBox');
+            const timeEl = document.getElementById('scanLogTime');
+            timeEl.textContent = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+            if (!logs || logs.length === 0) {
+                box.innerHTML = '<div style="font-size:10px; color:#555;">스캔 대기중...</div>';
+                return;
+            }
+            let html = '';
+            for (const l of logs.slice(0, 30)) {
+                const t = new Date(l.time).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                const cc = coinColors2[l.coin] || '#888';
+                const isAction = l.stage.includes('배팅') || l.stage.includes('갭!');
+                const isBrk = l.stage.includes('서킷');
+                const isWait = l.stage.includes('연속');
+                const stageColor = isAction ? '#4caf50' : isBrk ? '#f44336' : isWait ? '#ff9800' : '#666';
+                html += `<div style="font-size:10px; line-height:1.7; border-bottom:1px solid #111; padding:1px 0;">` +
+                    `<span style="color:#444;">${t}</span> ` +
+                    `<span style="color:${cc}; font-weight:bold;">${l.coin}</span>` +
+                    `<span style="color:#444;"> ${l.tf}</span> ` +
+                    `<span style="color:${stageColor}; font-weight:${isAction ? 'bold' : 'normal'};">${l.stage}</span> ` +
+                    `<span style="color:#555;">${l.detail}</span></div>`;
+            }
+            if (html !== _lastScanHtml) { box.innerHTML = html; _lastScanHtml = html; }
+        } catch(e) {}
     }
 
     // ===== 초기화 & 폴링 =====
-    connectWs();
-    refreshBotStatus();
-    refreshIndicators('BTC');
-    refreshIndicators('ETH');
-    refreshStats('BTC');
-    refreshTrades('BTC');
+    refreshAllIndicators();
+    refreshOdds();
+    refreshGaps();
+    refreshAllStats();
+    refreshAllTrades();
+    loadTriggers();
+    refreshBalance();
+    drawEquityCurve();
+    refreshLessons();
+    refreshScanLogs();
+    initChart('BTCUSDT');
+    initChart15m('BTCUSDT');
 
-    // 1초마다 현재 코인 가격 갱신
     setInterval(tickPrice, 1000);
-
-    // 30초마다 전체 지표 갱신
-    setInterval(() => refreshIndicators('BTC'), 30000);
-    setInterval(() => refreshIndicators('ETH'), 30000);
-
-    // 10초마다 봇 상태, 30초마다 통계/기록
-    setInterval(refreshBotStatus, 10000);
-    setInterval(() => refreshStats(currentCoin), 30000);
-    setInterval(() => refreshTrades(currentCoin), 30000);
+    setInterval(refreshGaps, 1000);
+    setInterval(refreshScanLogs, 1000);
+    setInterval(refreshAllIndicators, 30000);
+    setInterval(refreshOdds, 1000);
+    setInterval(refreshAllStats, 30000);
+    setInterval(refreshAllTrades, 15000);
+    setInterval(refreshTimeMarkers, 60000);
+    setInterval(refreshBalance, 15000);
+    setInterval(drawEquityCurve, 60000);
+    setInterval(refreshLessons, 60000);
 </script>
 </body>
 </html>

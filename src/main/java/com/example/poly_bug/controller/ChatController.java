@@ -76,17 +76,6 @@ public class ChatController {
         try {
             // 1. 명령어 먼저 체크 (Claude 호출 없이 즉시 처리)
             String msg = userMessage;
-            if (containsAny(msg, "봇 켜", "봇켜", "봇 시작", "봇시작", "start bot")) {
-                botStateService.start();
-                tradingService.broadcast("🟢 챗봇 명령으로 봇 시작됨!");
-                return ResponseEntity.ok(Map.of("reply",
-                        "✅ 봇을 시작했어요! " + (dryRun ? "DRY-RUN 모드로 " : "") + "30분마다 자율 배팅합니다 🦞"));
-            }
-            if (containsAny(msg, "봇 꺼", "봇꺼", "봇 정지", "봇정지", "봇 멈춰", "봇멈춰", "stop bot")) {
-                botStateService.stop();
-                tradingService.broadcast("🔴 챗봇 명령으로 봇 정지됨!");
-                return ResponseEntity.ok(Map.of("reply", "🔴 봇을 정지했어요."));
-            }
             if (containsAny(msg, "지금 배팅", "즉시 배팅", "바로 배팅", "배팅 실행", "1회 실행", "run now")) {
                 new Thread(() -> { tradingService.executeCycle("BTC"); tradingService.executeCycle("ETH"); }).start();
                 return ResponseEntity.ok(Map.of("reply", "⚡ 배팅 사이클 시작했어요! 왼쪽 로그를 확인하세요."));
@@ -110,7 +99,7 @@ public class ChatController {
 
         // 봇 상태
         ctx.append("=== 봇 상태 ===\n");
-        ctx.append("실행 중: ").append(botStateService.isRunning() ? "YES" : "NO").append("\n");
+        ctx.append("실행 중: YES (항상 자동 실행)\n");
         ctx.append("총 사이클: ").append(botStateService.getCycleCount()).append("회\n");
         ctx.append("마지막 행동: ").append(botStateService.getLastAction()).append("\n");
         ctx.append("DRY-RUN 모드: ").append(dryRun ? "YES (실제 배팅 안 함)" : "NO (실제 배팅 중)").append("\n\n");

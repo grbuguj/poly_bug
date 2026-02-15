@@ -11,55 +11,51 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 
 /**
- * BTC 동적 트리거 스케줄러
+ * XRP 1H 동적 트리거 스케줄러
  * ⚠️ V2 (OddsGapScanner) 전환으로 비활성화됨
- * trading.legacy-triggers.enabled=true 로 재활성화 가능
  */
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "trading.legacy-triggers.enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
-public class BtcTradingScheduler {
+public class XrpTradingScheduler {
 
     private final TradingService tradingService;
     private final TriggerConfigService triggerConfigService;
 
     private volatile boolean tradedThisHour = false;
 
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "8 * * * * *") // 매분 :08초 (BTC :00, ETH :03, SOL :05와 분산)
     public void checkTrigger() {
         int currentMinute = LocalDateTime.now().getMinute();
 
-        // 정각: pending 승격 + 플래그 리셋
         if (currentMinute == 0) {
             tradedThisHour = false;
-            // BTC/ETH 모두 여기서 승격 (ETH 스케줄러와 중복 방지)
-            triggerConfigService.promotePending();
-            log.info("🔄 [BTC] 시간당 배팅 플래그 리셋");
+            log.info("🔄 [XRP] 시간당 배팅 플래그 리셋");
             return;
         }
 
         if (tradedThisHour) return;
 
-        double evThreshold = triggerConfigService.getEvThresholdForMinute("BTC", currentMinute);
+        double evThreshold = triggerConfigService.getEvThresholdForMinute("XRP", currentMinute);
         if (evThreshold < 0) return;
 
-        TriggerConfigService.TriggerSet config = triggerConfigService.getConfig("BTC");
+        TriggerConfigService.TriggerSet config = triggerConfigService.getConfig("XRP");
         int triggerIndex = -1;
         for (int i = 0; i < config.getMinutes().length; i++) {
             if (config.getMinutes()[i] == currentMinute) { triggerIndex = i + 1; break; }
         }
 
-        log.info("⏰ [BTC] 트리거{} (:{}) — EV 임계값 {}%",
+        log.info("⏰ [XRP] 트리거{} (:{}) — EV 임계값 {}%",
                 triggerIndex, String.format("%02d", currentMinute), (int)(evThreshold * 100));
 
-        boolean traded = tradingService.executeMomentumCycle("BTC", "1H", evThreshold);
+        boolean traded = tradingService.executeMomentumCycle("XRP", "1H", evThreshold);
         if (traded) {
             tradedThisHour = true;
-            log.info("✅ [BTC] :{} 배팅 완료 — 이번 시간 추가 배팅 없음",
+            log.info("✅ [XRP] :{} 배팅 완료 — 이번 시간 추가 배팅 없음",
                     String.format("%02d", currentMinute));
         } else if (triggerIndex == 2) {
-            log.info("⏸️ [BTC] 이번 시간 2번 모두 패스 — 배팅 없음");
+            log.info("⏸️ [XRP] 이번 시간 2번 모두 패스 — 배팅 없음");
         }
     }
 }

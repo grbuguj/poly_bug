@@ -17,4 +17,5 @@ public class TradeDecision {
     private String coin;
     private String timeframe;
     private String learnedFromPast;
+    private String rawResponse;   // Claude 원본 응답 전문
 }
