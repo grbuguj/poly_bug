@@ -5,6 +5,7 @@ import com.example.poly_bug.dto.MarketIndicators;
 import com.example.poly_bug.dto.TradeDecision;
 import com.example.poly_bug.entity.Trade;
 import com.example.poly_bug.repository.TradeRepository;
+import com.example.poly_bug.util.PriceFormatter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -25,7 +26,13 @@ import java.util.Map;
 import java.util.concurrent.*;
 
 /**
- * ⚡ 오즈 갭 양방향 스캐너 V5 (Math-Only Hardened)
+ * ⚡ 오즈 갭 양방향 스캐너 V5.2 (Chainlink 통합)
+ *
+ * V5 → V5.2 강화:
+ *  ⭐ 15M/5M 시초가·현재가를 Chainlink 오라클로 전환 (폴리마켓 판정 기준 일치)
+ *  - 1H: Binance 기반 (폴리마켓도 Binance 사용)
+ *  - 15M/5M: Chainlink BTC/USD 기반 (폴리마켓 RTDS WebSocket)
+ *  - Chainlink 미수신 시 Binance fallback
  *
  * V4 → V5 강화 (Claude 없이 수학으로 해결):
  *  1. 횡보 감지 — 시초가 교차 횟수 추적 (3회+ = 방향 불명확 → 스킵)
@@ -44,6 +51,8 @@ public class OddsGapScanner {
     private final BalanceService balanceService;
     private final ExpectedValueCalculator evCalculator;
     private final TradeRepository tradeRepository;
+    private final MarketDataService marketDataService;
+    private final ChainlinkPriceService chainlinkPriceService;
 
     @Value("${trading.dry-run}")
     private boolean dryRun;
@@ -169,7 +178,11 @@ public class OddsGapScanner {
             default -> 0.10;
         };
         // 5M은 변동폭 자체가 작으므로 절반
-        return "5M".equals(timeframe) ? base * 0.5 : base;
+        if ("5M".equals(timeframe)) return base * 0.5;
+        // ⭐ V5.3: 15M은 변동폭 상향 (1H 패턴: 충분한 움직임에서만 진입)
+        // 15M WIN 평균 move 0.10% vs LOSE 0.13% → 기준 미달 노이즈 배팅 차단
+        if ("15M".equals(timeframe)) return base * 1.5;
+        return base;
     }
     private static final double MIN_REVERSE_ODDS_THRESHOLD = 0.68;
     private static final double MIN_BALANCE = 1.0;
@@ -200,7 +213,7 @@ public class OddsGapScanner {
                 .map(CoinConfig.CoinDef::label)
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("");
-        log.info("🔍 오즈갭 V5 스캐너 시작 (수학강화) | 코인: [{}] | 순방향≥{}% | 역방향≥{}% | 스프레드<{}% | 승률{}% | 서킷브레이커:3연패→5분정지",
+        log.info("🔍 오즈갭 V5.2 스캐너 시작 (Chainlink통합) | 코인: [{}] | 1H=Binance | 15M/5M=Chainlink | 순방향≥{}% | 역방향≥{}% | 스프레드<{}% | 승률{}% | 서킷브레이커:3연패→5분정지",
                 coinList, (int)(BASE_FORWARD_GAP * 100), (int)(BASE_REVERSE_GAP * 100),
                 (int)(MAX_SPREAD * 100), String.format("%.0f", recentWinRate * 100));
     }
@@ -342,35 +355,50 @@ public class OddsGapScanner {
     // 코인 × 타임프레임 개별 스캔 (양방향)
     // =========================================================================
     private void scanCoin(String coin, String timeframe) {
-        double currentPrice = priceMonitor.getPrice(coin);
-        if (currentPrice <= 0) return;
+        // ⭐ V5.3: 15M은 BTC만 허용 (데이터 분석: BTC 50%승률+$146 vs SOL 22%/-$137, ETH 28%/-$11)
+        // 5M 성공 패턴 적용: 단일 코인 집중 = 신호 품질 극대화
+        if ("15M".equals(timeframe) && !"BTC".equals(coin)) {
+            return;
+        }
 
-        double openPrice = "5M".equals(timeframe)
-                ? min5OpenPrices.getOrDefault(coin, 0.0)
-                : "15M".equals(timeframe)
-                ? min15OpenPrices.getOrDefault(coin, 0.0)
-                : hourOpenPrices.getOrDefault(coin, 0.0);
+        // ⭐ V5.2: 15M/5M은 Chainlink 가격 기준 (폴리마켓 판정 기준)
+        boolean useChainlink = ("15M".equals(timeframe) || "5M".equals(timeframe));
+
+        double currentPrice;
+        if (useChainlink) {
+            currentPrice = chainlinkPriceService.getPrice(coin);
+            if (currentPrice <= 0) {
+                // Chainlink 미수신 → Binance fallback
+                currentPrice = priceMonitor.getPrice(coin);
+                if (currentPrice <= 0) return;
+                log.debug("[{}][{}] Chainlink 가격 없음 → Binance fallback: {}", coin, timeframe, currentPrice);
+            }
+        } else {
+            currentPrice = priceMonitor.getPrice(coin);
+            if (currentPrice <= 0) return;
+        }
+
+        double openPrice;
+        if (useChainlink) {
+            // 15M/5M: Chainlink 시초가 우선
+            openPrice = "5M".equals(timeframe)
+                    ? chainlinkPriceService.get5mOpen(coin)
+                    : chainlinkPriceService.get15mOpen(coin);
+            if (openPrice <= 0) {
+                // Chainlink 시초가 미수신 → Binance fallback
+                openPrice = "5M".equals(timeframe)
+                        ? min5OpenPrices.getOrDefault(coin, 0.0)
+                        : min15OpenPrices.getOrDefault(coin, 0.0);
+                addScanLog(coin, timeframe, "⚠️ CL→BN fallback",
+                        String.format("open=%.2f (Binance)", openPrice));
+            }
+        } else {
+            openPrice = hourOpenPrices.getOrDefault(coin, 0.0);
+        }
         if (openPrice <= 0) return;
 
-        // ⚠️ 시초가 검증: 15M/5M open이 1H open과 동일하면 캐시 오염 가능성 → Binance API로 재조회
-        if ("15M".equals(timeframe) || "5M".equals(timeframe)) {
-            double hourOpen = hourOpenPrices.getOrDefault(coin, 0.0);
-            if (openPrice == hourOpen && hourOpen > 0) {
-                String interval = "15M".equals(timeframe) ? "15m" : "5m";
-                double freshOpen = fetchCandleOpen(coin, interval);
-                if (freshOpen > 0 && Math.abs(freshOpen - hourOpen) / hourOpen > 0.0001) {
-                    // 실제로 다른 값이 있음 → 캐시 오염이었음
-                    if ("15M".equals(timeframe)) {
-                        min15OpenPrices.put(coin, freshOpen);
-                    } else {
-                        min5OpenPrices.put(coin, freshOpen);
-                    }
-                    openPrice = freshOpen;
-                    log.warn("[{}][{}] 시초가 캐시 오염 수정: {} → {} (1H open={})",
-                            coin, timeframe, hourOpen, freshOpen, hourOpen);
-                }
-            }
-        }
+        // ⭐ V5.2: 15M/5M은 Chainlink 기준이므로 Binance 캐시 검증 불필요
+        // 1H만 기존 Binance 검증 유지
 
         double priceDiffPct = ((currentPrice - openPrice) / openPrice) * 100;
 
@@ -442,6 +470,16 @@ public class OddsGapScanner {
             log.debug("[{}][{}] 스프레드 과다: {}% > {}% — 스킵",
                     coin, timeframe, String.format("%.1f", spread * 100), (int)(MAX_SPREAD * 100));
             return;
+        }
+
+        // ⭐ V5.3: 15M 최소 오즈 필터 (데이터: LOSE 오즈 0.03~0.75 표준편차 0.168 → 극단 오즈 차단)
+        if ("15M".equals(timeframe)) {
+            double minOdds = Math.min(odds.upOdds(), odds.downOdds());
+            if (minOdds < 0.30) {
+                addScanLog(coin, timeframe, "⏸ 15M오즈필터",
+                        String.format("min오즈 %.0f%% < 30%%", minOdds * 100));
+                return;
+            }
         }
 
         // 방향 판단 & 확률 추정
@@ -953,7 +991,10 @@ public class OddsGapScanner {
             lastHour = currentHour;
             hourlyTradeCount.clear();
         }
-        int limit = "5M".equals(timeframe) ? MAX_TRADES_PER_COIN_PER_HOUR_5M : MAX_TRADES_PER_COIN_PER_HOUR;
+        // ⭐ V5.3: 15M은 시간당 1건 (1H 패턴: 선별적 진입, 현재 3건→거의 매캔들 배팅 방지)
+        int limit = "5M".equals(timeframe) ? MAX_TRADES_PER_COIN_PER_HOUR_5M
+                  : "15M".equals(timeframe) ? 1
+                  : MAX_TRADES_PER_COIN_PER_HOUR;
         return hourlyTradeCount.getOrDefault(cooldownKey, 0) < limit;
     }
 
@@ -993,44 +1034,56 @@ public class OddsGapScanner {
         if (currentHour != lastOpenHour) {
             lastOpenHour = currentHour;
             for (CoinConfig.CoinDef coin : CoinConfig.ACTIVE_COINS) {
-                double price = priceMonitor.getPrice(coin.label());
-                if (price > 0) hourOpenPrices.put(coin.label(), price);
+                // ⭐ V5.1: 1H도 Binance API 우선 (WebSocket 가격은 이전 캔들 종가일 수 있음)
+                double apiOpen = fetchCandleOpen(coin.label(), "1h");
+                if (apiOpen > 0) {
+                    hourOpenPrices.put(coin.label(), apiOpen);
+                } else {
+                    // API 실패 시 WebSocket fallback
+                    double price = priceMonitor.getPrice(coin.label());
+                    if (price > 0) hourOpenPrices.put(coin.label(), price);
+                    log.warn("[{}] 1H Binance API 실패 → WebSocket fallback: {}", coin.label(), price);
+                }
                 crossCounters.remove(coin.label() + "_1H");
                 priceRange.remove(coin.label() + "_1H");
             }
-            log.info("⏰ 1H 시초가 갱신: {}", hourOpenPrices);
+            log.info("⏰ 1H 시초가 갱신 (API): {}", hourOpenPrices);
         }
 
         if (current15mWindow != lastOpen15mWindow) {
             lastOpen15mWindow = current15mWindow;
             for (CoinConfig.CoinDef coin : CoinConfig.ACTIVE_COINS) {
-                double price = priceMonitor.getPrice(coin.label());
-                if (price <= 0) {
-                    // WebSocket 실패 시 Binance API fallback
-                    price = fetchCandleOpen(coin.label(), "15m");
-                    log.warn("[{}] 15M WebSocket 가격 없음 → Binance API fallback: {}", coin.label(), price);
+                // ⭐ V5.1: Binance API 우선 (정확한 캔들 시가)
+                double apiOpen = fetchCandleOpen(coin.label(), "15m");
+                if (apiOpen > 0) {
+                    min15OpenPrices.put(coin.label(), apiOpen);
+                } else {
+                    double price = priceMonitor.getPrice(coin.label());
+                    if (price > 0) min15OpenPrices.put(coin.label(), price);
+                    log.warn("[{}] 15M Binance API 실패 → WebSocket fallback: {}", coin.label(), price);
                 }
-                if (price > 0) min15OpenPrices.put(coin.label(), price);
                 crossCounters.remove(coin.label() + "_15M");
                 priceRange.remove(coin.label() + "_15M");
             }
-            log.info("⏰ 15M 시초가 갱신: {}", min15OpenPrices);
+            log.info("⏰ 15M 시초가 갱신 (Binance fallback, Chainlink 우선): {}", min15OpenPrices);
         }
 
         if (current5mWindow != lastOpen5mWindow) {
             lastOpen5mWindow = current5mWindow;
             for (CoinConfig.CoinDef coin : CoinConfig.ACTIVE_COINS) {
-                double price = priceMonitor.getPrice(coin.label());
-                if (price <= 0) {
-                    // WebSocket 실패 시 Binance API fallback
-                    price = fetchCandleOpen(coin.label(), "5m");
-                    log.warn("[{}] 5M WebSocket 가격 없음 → Binance API fallback: {}", coin.label(), price);
+                // ⭐ V5.1: Binance API 우선 (정확한 캔들 시가)
+                double apiOpen = fetchCandleOpen(coin.label(), "5m");
+                if (apiOpen > 0) {
+                    min5OpenPrices.put(coin.label(), apiOpen);
+                } else {
+                    double price = priceMonitor.getPrice(coin.label());
+                    if (price > 0) min5OpenPrices.put(coin.label(), price);
+                    log.warn("[{}] 5M Binance API 실패 → WebSocket fallback: {}", coin.label(), price);
                 }
-                if (price > 0) min5OpenPrices.put(coin.label(), price);
                 crossCounters.remove(coin.label() + "_5M");
                 priceRange.remove(coin.label() + "_5M");
             }
-            log.info("⏰ 5M 시초가 갱신: {}", min5OpenPrices);
+            log.info("⏰ 5M 시초가 갱신 (Binance fallback, Chainlink 우선): {}", min5OpenPrices);
         }
     }
 
@@ -1065,20 +1118,44 @@ public class OddsGapScanner {
                 .timeframe(timeframe)
                 .build();
 
-        MarketIndicators indicators = MarketIndicators.builder()
-                .targetCoin(coin)
-                .coinPrice(priceMonitor.getPrice(coin))
-                .coinHourOpen(hourOpenPrices.getOrDefault(coin, 0.0))
-                .coin15mOpen(min15OpenPrices.getOrDefault(coin, 0.0))
-                .coin5mOpen(min5OpenPrices.getOrDefault(coin, 0.0))
-                .btcPrice(priceMonitor.getPrice("BTC"))
-                .ethPrice(priceMonitor.getPrice("ETH"))
-                .btcChange1h(0).ethChange1h(0).ethChange4h(0).ethChange24h(0)
-                .btcChange4h(0).btcChange24h(0)
-                .fundingRate(0).openInterestChange(0)
-                .fearGreedIndex(0).fearGreedLabel("N/A")
-                .trend("GAP_SCAN_V5")
-                .build();
+        // 실제 마켓 지표 수집 (API 실패 시 기본값 fallback)
+        MarketIndicators indicators;
+        try {
+            indicators = marketDataService.collect(coin);
+            // 캐시된 시초가로 덮어쓰기 (collect가 별도로 조회할 수 있으므로)
+            indicators.setCoinPrice(priceMonitor.getPrice(coin));
+            indicators.setCoinHourOpen(hourOpenPrices.getOrDefault(coin, 0.0));
+            // ⭐ V5.2: 15M/5M은 Chainlink 시초가 우선
+            double cl15m = chainlinkPriceService.get15mOpen(coin);
+            double cl5m = chainlinkPriceService.get5mOpen(coin);
+            indicators.setCoin15mOpen(cl15m > 0 ? cl15m : min15OpenPrices.getOrDefault(coin, 0.0));
+            indicators.setCoin5mOpen(cl5m > 0 ? cl5m : min5OpenPrices.getOrDefault(coin, 0.0));
+            indicators.setBtcPrice(priceMonitor.getPrice("BTC"));
+            indicators.setEthPrice(priceMonitor.getPrice("ETH"));
+            indicators.setTrend("GAP_SCAN_V5");
+            log.info("[{}] 마켓지표 수집 완료: FR={}, OI변화={}%, FearGreed={}",
+                    coin, indicators.getFundingRate(), indicators.getOpenInterestChange(), indicators.getFearGreedIndex());
+        } catch (Exception e) {
+            log.warn("[{}] 마켓지표 수집 실패, 기본값 사용: {}", coin, e.getMessage());
+            indicators = MarketIndicators.builder()
+                    .targetCoin(coin)
+                    .coinPrice(priceMonitor.getPrice(coin))
+                    .coinHourOpen(hourOpenPrices.getOrDefault(coin, 0.0))
+                    .coin15mOpen(chainlinkPriceService.get15mOpen(coin) > 0
+                            ? chainlinkPriceService.get15mOpen(coin)
+                            : min15OpenPrices.getOrDefault(coin, 0.0))
+                    .coin5mOpen(chainlinkPriceService.get5mOpen(coin) > 0
+                            ? chainlinkPriceService.get5mOpen(coin)
+                            : min5OpenPrices.getOrDefault(coin, 0.0))
+                    .btcPrice(priceMonitor.getPrice("BTC"))
+                    .ethPrice(priceMonitor.getPrice("ETH"))
+                    .btcChange1h(0).ethChange1h(0).ethChange4h(0).ethChange24h(0)
+                    .btcChange4h(0).btcChange24h(0)
+                    .fundingRate(0).openInterestChange(0)
+                    .fearGreedIndex(0).fearGreedLabel("N/A")
+                    .trend("GAP_SCAN_V5")
+                    .build();
+        }
 
         tradingService.saveAndDeductLagTrade(decision, indicators, odds, evResult, betAmount, coin, timeframe);
     }

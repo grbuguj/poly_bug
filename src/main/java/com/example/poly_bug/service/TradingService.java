@@ -4,6 +4,7 @@ import com.example.poly_bug.dto.MarketIndicators;
 import com.example.poly_bug.dto.TradeDecision;
 import com.example.poly_bug.entity.Trade;
 import com.example.poly_bug.repository.TradeRepository;
+import com.example.poly_bug.util.PriceFormatter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +26,7 @@ public class TradingService {
     private final ExpectedValueCalculator evCalculator;
     private final PolymarketOrderService orderService;
     private final BalanceService balanceService;
+    private final ChainlinkPriceService chainlinkPriceService;
 
     @Value("${trading.dry-run}")
     private boolean dryRun;
@@ -49,16 +51,26 @@ public class TradingService {
 
             double currentPrice = indicators.getCoinPrice();
 
-            // 2. 시초가 조회
+            // 2. 시초가 조회 (5M/15M은 Chainlink, 1H은 Binance)
             double openPrice;
             if ("5M".equals(timeframe)) {
-                openPrice = indicators.getCoin5mOpen();
+                // ⭐ V7: 5M은 Chainlink 시초가 우선 (폴리마켓 판정 기준)
+                openPrice = chainlinkPriceService.get5mOpen(coin);
+                if (openPrice <= 0) {
+                    openPrice = indicators.getCoin5mOpen(); // Binance fallback
+                    log.warn("⚠️ [{}] Chainlink 5M open 없음 → Binance fallback: {}", coin, openPrice);
+                }
                 if (openPrice <= 0) openPrice = indicators.getCoinHourOpen();
             } else if (is15m) {
-                try {
-                    openPrice = marketDataService.fetchCurrent15mOpen(symbol);
-                } catch (Exception e) {
-                    openPrice = indicators.getCoinHourOpen();
+                // ⭐ V7: 15M은 Chainlink 시초가 우선 (폴리마켓 판정 기준)
+                openPrice = chainlinkPriceService.get15mOpen(coin);
+                if (openPrice <= 0) {
+                    try {
+                        openPrice = marketDataService.fetchCurrent15mOpen(symbol); // Binance fallback
+                        log.warn("⚠️ [{}] Chainlink 15M open 없음 → Binance fallback: {}", coin, openPrice);
+                    } catch (Exception e) {
+                        openPrice = indicators.getCoinHourOpen();
+                    }
                 }
             } else {
                 openPrice = indicators.getCoinHourOpen();
@@ -88,8 +100,8 @@ public class TradingService {
             }
             int remainMin = totalMin - elapsedMin;
 
-            broadcast(String.format("📍 [%s] 시초가 $%,.2f → 현재 $%,.2f | %s %+.3f%% | %d분 경과, %d분 남음",
-                    coin, openPrice, currentPrice, direction, pricePct, elapsedMin, remainMin));
+            broadcast(String.format("📍 [%s] 시초가 %s → 현재 %s | %s %+.3f%% | %d분 경과, %d분 남음",
+                    coin, PriceFormatter.formatWithSymbol(coin, openPrice), PriceFormatter.formatWithSymbol(coin, currentPrice), direction, pricePct, elapsedMin, remainMin));
 
             // 4. 최소 변동폭 필터 (노이즈 제거)
             double minMovePct = is15m ? 0.15 : 0.25;
@@ -182,7 +194,7 @@ public class TradingService {
                 broadcast(String.format("🟢 [실제배팅][%s] 모멘텀 %s | $%.2f | EV: %+.1f%%",
                         coin, dir, betAmount, evResult.bestEv() * 100));
                 try {
-                    String tokenId = getTokenId(odds.marketId(), finalAction);
+                    String tokenId = getTokenId(odds, finalAction);
                     String orderId = orderService.placeOrder(tokenId, "BUY", betAmount);
                     broadcast(String.format("✅ 주문 성공: %s", orderId));
                 } catch (Exception e) {
@@ -311,9 +323,9 @@ public class TradingService {
             broadcast(String.format("📡 [%s %s] 바이낸스 데이터 수집 중...", coin, tfLabel));
             MarketIndicators indicators = marketDataService.collect(coin);
 
-            broadcast(String.format("💹 [%s] 현재가: $%.2f | 1H: %+.2f%% | 펀딩비: %+.4f%% | 공포탐욕: %d(%s)",
+            broadcast(String.format("💹 [%s] 현재가: %s | 1H: %+.2f%% | 펀딩비: %+.4f%% | 공포탐욕: %d(%s)",
                     coin,
-                    indicators.getCoinPrice(),
+                    PriceFormatter.formatWithSymbol(coin, indicators.getCoinPrice()),
                     indicators.getCoinChange1h(),
                     indicators.getFundingRate(),
                     indicators.getFearGreedIndex(),
@@ -397,7 +409,7 @@ public class TradingService {
                         coin, dir, betAmount, evResult.bestEv() * 100));
                 try {
                     // 폴리마켓 실제 주문
-                    String tokenId = getTokenId(odds.marketId(), finalAction);
+                    String tokenId = getTokenId(odds, finalAction);
                     String orderId = orderService.placeOrder(tokenId, "BUY", betAmount);
                     broadcast(String.format("✅ 주문 성공: %s", orderId));
                 } catch (Exception e) {
@@ -426,17 +438,21 @@ public class TradingService {
                              ExpectedValueCalculator.EvResult evResult,
                              double betAmount, String coin, String timeframe) {
         double entryPrice = indicators.getCoinPrice();
-        // 시초가: 1H는 정시 시가, 15M은 15분 윈도우 시가, 5M은 5분 윈도우 시가
+        // 시초가: 5M/15M은 Chainlink 우선 (폴리마켓 판정 기준), 1H은 Binance
         double openPrice;
         if ("5M".equals(timeframe)) {
-            openPrice = indicators.getCoin5mOpen();
+            openPrice = chainlinkPriceService.get5mOpen(coin);
+            if (openPrice <= 0) openPrice = indicators.getCoin5mOpen();
             if (openPrice <= 0) openPrice = indicators.getCoinHourOpen();
         } else if ("15M".equals(timeframe)) {
-            try {
-                openPrice = marketDataService.fetchCurrent15mOpen(coin + "USDT");
-            } catch (Exception e) {
-                log.warn("15M 시초가 조회 실패, coin필드 사용", e);
-                openPrice = indicators.getCoin15mOpen() > 0 ? indicators.getCoin15mOpen() : indicators.getCoinHourOpen();
+            openPrice = chainlinkPriceService.get15mOpen(coin);
+            if (openPrice <= 0) {
+                try {
+                    openPrice = marketDataService.fetchCurrent15mOpen(coin + "USDT");
+                } catch (Exception e) {
+                    log.warn("15M 시초가 조회 실패, fallback 사용", e);
+                    openPrice = indicators.getCoin15mOpen() > 0 ? indicators.getCoin15mOpen() : indicators.getCoinHourOpen();
+                }
             }
         } else {
             openPrice = indicators.getCoinHourOpen();
@@ -475,13 +491,17 @@ public class TradingService {
         double entryPrice = indicators.getCoinPrice();
         double openPrice;
         if ("5M".equals(timeframe)) {
-            openPrice = indicators.getCoin5mOpen();
+            openPrice = chainlinkPriceService.get5mOpen(coin);
+            if (openPrice <= 0) openPrice = indicators.getCoin5mOpen();
             if (openPrice <= 0) openPrice = indicators.getCoinHourOpen();
         } else if ("15M".equals(timeframe)) {
-            try {
-                openPrice = marketDataService.fetchCurrent15mOpen(coin + "USDT");
-            } catch (Exception e) {
-                openPrice = indicators.getCoin15mOpen() > 0 ? indicators.getCoin15mOpen() : indicators.getCoinHourOpen();
+            openPrice = chainlinkPriceService.get15mOpen(coin);
+            if (openPrice <= 0) {
+                try {
+                    openPrice = marketDataService.fetchCurrent15mOpen(coin + "USDT");
+                } catch (Exception e) {
+                    openPrice = indicators.getCoin15mOpen() > 0 ? indicators.getCoin15mOpen() : indicators.getCoinHourOpen();
+                }
             }
         } else {
             openPrice = indicators.getCoinHourOpen();
@@ -564,9 +584,11 @@ public class TradingService {
         }
     }
 
-    private String getTokenId(String marketId, Trade.TradeAction action) {
-        // 실제로는 Polymarket API로 토큰 ID 조회 필요
-        // 임시: UP=YES 토큰, DOWN=NO 토큰
-        return marketId + (action == Trade.TradeAction.BUY_YES ? "-yes" : "-no");
+    private String getTokenId(PolymarketOddsService.MarketOdds odds, Trade.TradeAction action) {
+        if (action == Trade.TradeAction.BUY_YES) {
+            return odds.yesTokenId() != null ? odds.yesTokenId() : odds.marketId() + "-yes";
+        } else {
+            return odds.noTokenId() != null ? odds.noTokenId() : odds.marketId() + "-no";
+        }
     }
 }

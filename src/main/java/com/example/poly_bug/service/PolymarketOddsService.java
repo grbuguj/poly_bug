@@ -66,8 +66,15 @@ public class PolymarketOddsService {
             double downOdds,     // Down(NO) 가격 (0~1)
             String marketId,     // conditionId
             String slug,         // 사용된 slug
-            boolean available    // 마켓 조회 성공 여부
-    ) {}
+            boolean available,   // 마켓 조회 성공 여부
+            String yesTokenId,   // CLOB YES 토큰 ID (주문용)
+            String noTokenId     // CLOB NO 토큰 ID (주문용)
+    ) {
+        /** 하위 호환 생성자 (토큰 ID 없이) */
+        public MarketOdds(double upOdds, double downOdds, String marketId, String slug, boolean available) {
+            this(upOdds, downOdds, marketId, slug, available, null, null);
+        }
+    }
 
     public MarketOdds getBtcOdds() {
         long now = System.currentTimeMillis();
@@ -278,7 +285,7 @@ public class PolymarketOddsService {
      * 예: btc-updown-5m-1771122000
      * timestamp = 현재 5분 윈도우 시작의 unix epoch (초)
      */
-    String build5mSlug(String coinPrefix) {
+    public String build5mSlug(String coinPrefix) {
         ZonedDateTime nowET = ZonedDateTime.now(ET);
         int minute = nowET.getMinute();
         int windowStart = (minute / 5) * 5; // 0, 5, 10, 15, ...55
@@ -453,19 +460,29 @@ public class PolymarketOddsService {
         String conditionId = market.path("conditionId").asText(
                 market.path("condition_id").asText("unknown"));
 
-        // 1차: CLOB API로 실시간 가격 조회 (양쪽 독립 — 실제 매수가, 스프레드 포함)
+        // 토큰 ID 파싱 (주문 실행용)
+        String yesTokenId = null;
+        String noTokenId = null;
         String tokenIdsStr = market.path("clobTokenIds").asText("");
         if (!tokenIdsStr.isBlank()) {
             try {
                 JsonNode tokenIds = objectMapper.readTree(tokenIdsStr);
                 if (tokenIds.isArray() && tokenIds.size() >= 2) {
-                    String upTokenId = tokenIds.get(0).asText();
-                    String downTokenId = tokenIds.get(1).asText();
-                    MarketOdds clobResult = fetchFromClob(upTokenId, downTokenId, conditionId, slug, coinLabel);
-                    if (clobResult != null) return clobResult;
+                    yesTokenId = tokenIds.get(0).asText();
+                    noTokenId = tokenIds.get(1).asText();
                 }
             } catch (Exception e) {
                 log.debug("[{}] clobTokenIds 파싱 실패: {}", coinLabel, e.getMessage());
+            }
+        }
+
+        // 1차: CLOB API로 실시간 가격 조회 (양쪽 독립 — 실제 매수가, 스프레드 포함)
+        if (yesTokenId != null && noTokenId != null) {
+            MarketOdds clobResult = fetchFromClob(yesTokenId, noTokenId, conditionId, slug, coinLabel);
+            if (clobResult != null) {
+                // CLOB 결과에 토큰 ID 포함해서 반환
+                return new MarketOdds(clobResult.upOdds(), clobResult.downOdds(),
+                        conditionId, slug, true, yesTokenId, noTokenId);
             }
         }
 
@@ -482,7 +499,7 @@ public class PolymarketOddsService {
                             String.format("%.0f", upOdds * 100),
                             String.format("%.0f", downOdds * 100),
                             slug);
-                    return new MarketOdds(upOdds, downOdds, conditionId, slug, true);
+                    return new MarketOdds(upOdds, downOdds, conditionId, slug, true, yesTokenId, noTokenId);
                 }
             } catch (Exception e) {
                 log.debug("[{}] outcomePrices 파싱 실패: {}", coinLabel, e.getMessage());

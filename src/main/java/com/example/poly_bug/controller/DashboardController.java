@@ -10,6 +10,9 @@ import com.example.poly_bug.service.TriggerConfigService;
 import com.example.poly_bug.service.BalanceService;
 import com.example.poly_bug.service.LessonService;
 import com.example.poly_bug.service.OddsGapScanner;
+import com.example.poly_bug.service.ChainlinkPriceService;
+import com.example.poly_bug.service.BinanceWebSocketService;
+import com.example.poly_bug.util.PriceFormatter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -32,6 +35,8 @@ public class DashboardController {
     private final BalanceService balanceService;
     private final LessonService lessonService;
     private final OddsGapScanner oddsGapScanner;
+    private final ChainlinkPriceService chainlinkPriceService;
+    private final BinanceWebSocketService binanceWebSocketService;
 
     @GetMapping("/")
     public String dashboard(Model model) {
@@ -282,6 +287,13 @@ public class DashboardController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // ===== 전체 트레이드 덤프 (분석용) =====
+    @GetMapping("/trades/all")
+    @ResponseBody
+    public ResponseEntity<List<Trade>> allTrades() {
+        return ResponseEntity.ok(tradeRepository.findAll());
+    }
+
     // ===== 배팅 기록 전체 삭제 =====
     @DeleteMapping("/trades/all")
     @ResponseBody
@@ -450,5 +462,90 @@ public class DashboardController {
             return oddsService.getOdds15mForCoin(coin.toUpperCase());
         }
         return oddsService.getOddsForCoin(coin.toUpperCase());
+    }
+
+    // ===== ⭐ Chainlink 실시간 가격 (대시보드 폴링용) =====
+    @GetMapping("/chainlink-tick")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> chainlinkTick() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("connected", chainlinkPriceService.isConnected());
+        for (String coin : List.of("BTC", "ETH", "SOL", "XRP")) {
+            Map<String, Object> coinData = new HashMap<>();
+            coinData.put("price", chainlinkPriceService.getPrice(coin));
+            coinData.put("open5m", chainlinkPriceService.get5mOpen(coin));
+            coinData.put("open15m", chainlinkPriceService.get15mOpen(coin));
+            coinData.put("lastUpdate", chainlinkPriceService.getLastUpdateTime(coin));
+            result.put(coin, coinData);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    // ===== ⭐ Chainlink 디버그 =====
+    @GetMapping("/api/debug/chainlink")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> debugChainlink() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("connected", chainlinkPriceService.isConnected());
+        result.put("chainlink_prices", chainlinkPriceService.getAllPrices());
+        result.put("chainlink_15m_open", chainlinkPriceService.getAll15mOpens());
+        result.put("chainlink_5m_open", chainlinkPriceService.getAll5mOpens());
+        result.put("chainlink_ring_buffer", chainlinkPriceService.getRingBufferStatus());
+        result.put("chainlink_5m_boundaries", chainlinkPriceService.get5mBoundaries());
+
+        // Binance 비교
+        Map<String, Double> binancePrices = new HashMap<>();
+        for (String coin : List.of("BTC", "ETH", "SOL", "XRP")) {
+            binancePrices.put(coin, binanceWebSocketService.getPrice(coin));
+        }
+        result.put("binance_prices", binancePrices);
+
+        // 차이 비교
+        Map<String, String> diffs = new HashMap<>();
+        for (String coin : List.of("BTC", "ETH", "SOL", "XRP")) {
+            double cl = chainlinkPriceService.getPrice(coin);
+            double bn = binanceWebSocketService.getPrice(coin);
+            if (cl > 0 && bn > 0) {
+                double diffPct = ((cl - bn) / bn) * 100;
+                diffs.put(coin, String.format("CL=%s BN=%s diff=%.4f%%", PriceFormatter.format(coin, cl), PriceFormatter.format(coin, bn), diffPct));
+            } else {
+                diffs.put(coin, String.format("CL=%s BN=%s (Chainlink %s)", PriceFormatter.format(coin, cl), PriceFormatter.format(coin, bn), cl > 0 ? "OK" : "NO DATA"));
+            }
+        }
+        result.put("price_comparison", diffs);
+
+        // 타임스탬프
+        Map<String, Long> timestamps = new HashMap<>();
+        for (String coin : List.of("BTC", "ETH", "SOL", "XRP")) {
+            timestamps.put(coin, chainlinkPriceService.getLastUpdateTime(coin));
+        }
+        result.put("last_update_ms", timestamps);
+
+        return ResponseEntity.ok(result);
+    }
+
+    // ===== ⭐ 5M 마켓 전체 JSON 덤프 =====
+    @GetMapping("/api/debug/market5m/{coin}")
+    @ResponseBody
+    public ResponseEntity<String> debugMarket5m(@PathVariable String coin) {
+        try {
+            String prefix = coin.toLowerCase();
+            String slug = oddsService.build5mSlug(prefix);
+
+            okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+
+            // events API
+            String url = "https://gamma-api.polymarket.com/events?slug=" + slug;
+            okhttp3.Request req = new okhttp3.Request.Builder().url(url).get().build();
+            try (okhttp3.Response res = client.newCall(req).execute()) {
+                String body = res.body() != null ? res.body().string() : "null";
+                return ResponseEntity.ok("slug: " + slug + "\nurl: " + url + "\n\n" + body);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.ok("Error: " + e.getMessage());
+        }
     }
 }

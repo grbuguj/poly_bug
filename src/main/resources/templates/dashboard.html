@@ -1120,31 +1120,63 @@
     // ===== 가격 갱신 =====
     let hourOpen = { BTC: 0, ETH: 0, SOL: 0, XRP: 0 };
     let open15m = { BTC: 0, ETH: 0, SOL: 0, XRP: 0 };
+    let open5m = { BTC: 0, ETH: 0, SOL: 0, XRP: 0 };
 
     async function tickPrice() {
         const dot = document.getElementById('tickDot');
         dot.style.color = '#4caf50';
         setTimeout(() => dot.style.color = '#333', 200);
         try {
-            const [btcRes, ethRes, solRes, xrpRes] = await Promise.all([
-                fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json()),
-                fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT').then(r=>r.json()),
-                fetch('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT').then(r=>r.json()),
-                fetch('https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT').then(r=>r.json())
-            ]);
-            const useOpen = currentTimeframe === '15M' ? open15m : hourOpen;
-            updatePriceCard('btc', parseFloat(btcRes.price), useOpen.BTC);
-            updatePriceCard('eth', parseFloat(ethRes.price), useOpen.ETH);
-            updatePriceCard('sol', parseFloat(solRes.price), useOpen.SOL);
-            updatePriceCard('xrp', parseFloat(xrpRes.price), useOpen.XRP);
-            const openLabel = currentTimeframe === '15M' ? '15M 시작가' : '정시 시작가';
-            document.querySelectorAll('.open-label').forEach(el => el.textContent = openLabel);
+            if (currentTimeframe === '1H') {
+                // 1H: Binance 가격 사용 (기존)
+                const [btcRes, ethRes, solRes, xrpRes] = await Promise.all([
+                    fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json()),
+                    fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT').then(r=>r.json()),
+                    fetch('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT').then(r=>r.json()),
+                    fetch('https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT').then(r=>r.json())
+                ]);
+                updatePriceCard('btc', parseFloat(btcRes.price), hourOpen.BTC);
+                updatePriceCard('eth', parseFloat(ethRes.price), hourOpen.ETH);
+                updatePriceCard('sol', parseFloat(solRes.price), hourOpen.SOL);
+                updatePriceCard('xrp', parseFloat(xrpRes.price), hourOpen.XRP);
+                document.querySelectorAll('.open-label').forEach(el => el.textContent = '정시 시작가');
+            } else {
+                // ⭐ 5M/15M: Chainlink 가격 사용 (폴리마켓 판정 소스)
+                const clRes = await fetch('/chainlink-tick');
+                const cl = await clRes.json();
+                const openKey = currentTimeframe === '5M' ? 'open5m' : 'open15m';
+                const coinMap = {btc:'BTC', eth:'ETH', sol:'SOL', xrp:'XRP'};
+                for (const prefix in coinMap) {
+                    const coin = coinMap[prefix];
+                    const d = cl[coin];
+                    if (d && d.price > 0) {
+                        updatePriceCard(prefix, d.price, d[openKey] || 0);
+                        if (currentTimeframe === '5M' && d.open5m > 0) open5m[coin] = d.open5m;
+                        if (currentTimeframe === '15M' && d.open15m > 0) open15m[coin] = d.open15m;
+                    } else {
+                        // Chainlink 아직 수신 안 됨 → Binance fallback
+                        try {
+                            const sym = coin === 'BTC' ? 'BTCUSDT' : coin === 'ETH' ? 'ETHUSDT' : coin === 'SOL' ? 'SOLUSDT' : 'XRPUSDT';
+                            const fb = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=' + sym).then(r=>r.json());
+                            const useOpen = currentTimeframe === '5M' ? open5m : open15m;
+                            updatePriceCard(prefix, parseFloat(fb.price), useOpen[coin]);
+                        } catch(e2) {}
+                    }
+                }
+                const label = currentTimeframe === '5M' ? '⛓ 5M 시작가' : '⛓ 15M 시작가';
+                document.querySelectorAll('.open-label').forEach(el => el.textContent = label);
+            }
             document.getElementById('tickTime').textContent = new Date().toLocaleTimeString('ko-KR');
-        } catch(e) {}
+        } catch(e) {
+            console.error('tickPrice error:', e);
+        }
     }
 
     function updatePriceCard(prefix, price, open) {
-        const fmt = {minimumFractionDigits:2, maximumFractionDigits:2};
+        // XRP는 소수점 4자리 (가격이 $1.52 수준이라 2자리로는 변동이 안 보임)
+        const isXrp = prefix === 'xrp';
+        const digits = isXrp ? 4 : 2;
+        const fmt = {minimumFractionDigits:digits, maximumFractionDigits:digits};
         document.getElementById(prefix+'NowPrice').textContent = '$' + price.toLocaleString('en-US', fmt);
         if (open > 0) {
             document.getElementById(prefix+'HourOpen').textContent = '$' + open.toLocaleString('en-US', fmt);
@@ -1156,7 +1188,7 @@
             dirEl.style.color = isUp ? '#4caf50' : '#f44336';
             document.getElementById(prefix+'Arrow').textContent = isUp ? '↗' : '↘';
             document.getElementById(prefix+'Arrow').style.color = isUp ? '#4caf50' : '#f44336';
-            document.getElementById(prefix+'PriceDiff').textContent = (isUp?'+':'') + diff.toFixed(2);
+            document.getElementById(prefix+'PriceDiff').textContent = (isUp?'+':'') + diff.toFixed(digits);
             document.getElementById(prefix+'PriceDiff').style.color = isUp ? '#4caf50' : '#f44336';
             document.getElementById(prefix+'PricePct').textContent = (isUp?'+':'') + pct.toFixed(3) + '%';
             document.getElementById(prefix+'PricePct').style.color = isUp ? '#4caf50' : '#f44336';
@@ -1185,6 +1217,8 @@
                     if (m.coinHourOpen > 0) hourOpen[coin] = m.coinHourOpen;
                     if (m.coin15mOpen > 0) open15m[coin] = m.coin15mOpen;
                 }
+                // ⭐ 5M 시초가: 모든 코인 공통 (coin5mOpen은 항상 세팅됨)
+                if (m.coin5mOpen > 0) open5m[coin] = m.coin5mOpen;
             } catch(e) {}
         }
         updateIndicatorUI();
@@ -1270,8 +1304,8 @@
         const reason = t.reason || '';
         const evMatch = reason.match(/EV: ([+-][\d.]+%)/);
         const ev = evMatch ? evMatch[1] : '-';
-        const priceFmt = {minimumFractionDigits:2, maximumFractionDigits:2};
-        // 시초가
+        // XRP는 소수점 4자리 (가격이 작아서 2자리로는 변동이 안 보임)
+        const priceFmt = (t.coin === 'XRP') ? {minimumFractionDigits:4, maximumFractionDigits:4} : {minimumFractionDigits:2, maximumFractionDigits:2};
         const open = t.openPrice ? '$' + t.openPrice.toLocaleString('en-US', priceFmt) : '<span style="color:#444;">-</span>';
         // 진입가
         const entry = t.entryPrice ? '$' + t.entryPrice.toLocaleString('en-US', priceFmt) : '-';

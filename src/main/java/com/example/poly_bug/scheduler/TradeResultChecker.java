@@ -2,7 +2,9 @@ package com.example.poly_bug.scheduler;
 
 import com.example.poly_bug.entity.Trade;
 import com.example.poly_bug.repository.TradeRepository;
+import com.example.poly_bug.service.ChainlinkPriceService;
 import com.example.poly_bug.service.TradingService;
+import com.example.poly_bug.util.PriceFormatter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ public class TradeResultChecker {
 
     private final TradeRepository tradeRepository;
     private final TradingService tradingService;
+    private final ChainlinkPriceService chainlinkPriceService;
     private final OkHttpClient httpClient = new OkHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -101,9 +104,49 @@ public class TradeResultChecker {
             }
 
             try {
-                double[] openAndClose = getCandleOpenAndClose(trade.getCoin(), trade.getCreatedAt(), tf);
-                double candleOpen = openAndClose[0];
-                double closePrice = openAndClose[1];
+                double candleOpen;
+                double closePrice;
+
+                if (("5M".equals(tf) || "15M".equals(tf))) {
+                    // ⭐ V7: 5M/15M은 Chainlink 종가 우선 (폴리마켓 판정 기준)
+                    int intervalSec = "5M".equals(tf) ? 300 : 900;
+                    int minute = trade.getCreatedAt().getMinute();
+                    int windowStart = "5M".equals(tf) ? (minute / 5) * 5 : (minute / 15) * 15;
+                    LocalDateTime candleStartLdt = trade.getCreatedAt().truncatedTo(ChronoUnit.HOURS)
+                            .plusMinutes(windowStart);
+                    long boundaryTsSec = candleStartLdt.atZone(java.time.ZoneId.systemDefault())
+                            .toInstant().getEpochSecond();
+                    // UTC 기준 정규화 (300/900 배수)
+                    boundaryTsSec = boundaryTsSec - (boundaryTsSec % intervalSec);
+
+                    // Chainlink 시초가/종가 조회
+                    double chainlinkOpen = "5M".equals(tf)
+                            ? chainlinkPriceService.get5mOpenAt(trade.getCoin(), boundaryTsSec)
+                            : chainlinkPriceService.get15mOpenAt(trade.getCoin(), boundaryTsSec);
+                    double chainlinkClose = "5M".equals(tf)
+                            ? chainlinkPriceService.get5mClose(trade.getCoin(), boundaryTsSec)
+                            : chainlinkPriceService.get15mClose(trade.getCoin(), boundaryTsSec);
+
+                    if (chainlinkClose > 0) {
+                        // Chainlink 데이터 있음 → 사용
+                        closePrice = chainlinkClose;
+                        candleOpen = chainlinkOpen > 0 ? chainlinkOpen : 0;
+                        log.info("⛓ [V7] Trade #{} [{}{}] Chainlink 판정: open={}, close={} (boundary={})",
+                                trade.getId(), trade.getCoin(), tf, candleOpen, closePrice, boundaryTsSec);
+                    } else {
+                        // Chainlink 데이터 없음 → Binance fallback (서버 재시작 등)
+                        log.warn("⚠️ [V7] Trade #{} [{}{}] Chainlink close 없음 → Binance fallback (boundary={})",
+                                trade.getId(), trade.getCoin(), tf, boundaryTsSec);
+                        double[] openAndClose = getCandleOpenAndClose(trade.getCoin(), trade.getCreatedAt(), tf);
+                        candleOpen = openAndClose[0];
+                        closePrice = openAndClose[1];
+                    }
+                } else {
+                    // 1H: Binance 사용 (기존 로직)
+                    double[] openAndClose = getCandleOpenAndClose(trade.getCoin(), trade.getCreatedAt(), tf);
+                    candleOpen = openAndClose[0];
+                    closePrice = openAndClose[1];
+                }
                 if (closePrice <= 0) {
                     tradingService.broadcast(String.format("⚠️ Trade #%d [%s] 종가 조회 실패 — 재시도 예정",
                             trade.getId(), trade.getCoin()));
@@ -131,8 +174,8 @@ public class TradeResultChecker {
                 tradingService.broadcast(String.format(
                         "%s [%s %s] #%d %s | 시초가 $%s → 종가 $%s → %s",
                         emoji, symbol, trade.getCoin(), trade.getId(), actionStr,
-                        String.format("%.2f", refOpen),
-                        String.format("%.2f", closePrice),
+                        PriceFormatter.format(trade.getCoin(), refOpen),
+                        PriceFormatter.format(trade.getCoin(), closePrice),
                         result));
 
                 tradingService.updateTradeResult(trade.getId(), result, closePrice);

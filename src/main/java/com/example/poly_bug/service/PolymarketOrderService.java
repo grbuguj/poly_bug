@@ -42,13 +42,18 @@ public class PolymarketOrderService {
     private static final String CHAIN_ID = "137"; // Polygon Mainnet
     private static final String EXCHANGE_CONTRACT = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E";
 
-    // EIP-712 도메인 타입 해시
-    private static final String DOMAIN_TYPE_HASH = 
-        "0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f"; // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+    // EIP-712 도메인 타입 해시 (keccak256 of type string)
+    // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+    // 이 값은 web3j Hash.sha3()로 런타임 계산하므로 상수 불필요
 
-    // Order 타입 해시
-    private static final String ORDER_TYPE_HASH =
-        "0x94c0c7bf8e3e5c4a48f7f4d1a0f2c5e8b7a6d5e4f3c2b1a0"; // keccak256("Order(address maker,address taker,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint8 side,uint256 feeRateBps,uint256 nonce,address signer,uint256 expiration,uint8 signatureType)")
+    // Order 타입 문자열 (Polymarket CTF Exchange 공식 스펙)
+    private static final String ORDER_TYPE_STRING =
+        "Order(uint256 salt,address maker,address signer,address taker,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint256 expiration,uint256 nonce,uint256 feeRateBps,uint8 side,uint8 signatureType)";
+
+    // 런타임 계산
+    private static final byte[] ORDER_TYPE_HASH_BYTES = Hash.sha3(ORDER_TYPE_STRING.getBytes(StandardCharsets.UTF_8));
+    private static final byte[] DOMAIN_TYPE_HASH_BYTES = Hash.sha3(
+        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)".getBytes(StandardCharsets.UTF_8));
 
     /**
      * 폴리마켓 주문 실행
@@ -133,74 +138,49 @@ public class PolymarketOrderService {
     }
 
     /**
-     * EIP-712 서명 (폴리마켓 정확한 구현)
+     * EIP-712 서명 (Polymarket CTF Exchange 공식 스펙)
      */
     private String signEIP712(Credentials credentials, ObjectNode orderData,
                               String tokenId, long makerAmount, long takerAmount,
                               int side, long nonce, long expiration) throws Exception {
         
         String makerAddress = credentials.getAddress().toLowerCase();
+        long salt = System.nanoTime(); // 고유 salt
+        orderData.put("salt", String.valueOf(salt));
         
-        // 1. Domain Separator 계산
-        // domainSeparator = keccak256(abi.encode(
-        //     DOMAIN_TYPE_HASH,
-        //     keccak256("Polymarket CTF Exchange"),
-        //     keccak256("1"),
-        //     chainId,
-        //     verifyingContract
-        // ))
-        
+        // 1. Domain Separator
         byte[] nameHash = Hash.sha3("Polymarket CTF Exchange".getBytes(StandardCharsets.UTF_8));
         byte[] versionHash = Hash.sha3("1".getBytes(StandardCharsets.UTF_8));
         
-        String domainData = 
-            DOMAIN_TYPE_HASH +
-            Numeric.toHexStringNoPrefix(nameHash) +
-            Numeric.toHexStringNoPrefix(versionHash) +
-            padLeft(CHAIN_ID, 64) +
-            padLeft(EXCHANGE_CONTRACT.substring(2), 64);
+        // abi.encode(domainTypeHash, nameHash, versionHash, chainId, verifyingContract)
+        byte[] domainEncoded = new byte[32 * 5];
+        System.arraycopy(DOMAIN_TYPE_HASH_BYTES, 0, domainEncoded, 0, 32);
+        System.arraycopy(nameHash, 0, domainEncoded, 32, 32);
+        System.arraycopy(versionHash, 0, domainEncoded, 64, 32);
+        encodeUint256(domainEncoded, 96, BigInteger.valueOf(137)); // chainId
+        encodeAddress(domainEncoded, 128, EXCHANGE_CONTRACT);
         
-        byte[] domainSeparator = Hash.sha3(Numeric.hexStringToByteArray(domainData));
+        byte[] domainSeparator = Hash.sha3(domainEncoded);
 
-        // 2. Struct Hash 계산
-        // structHash = keccak256(abi.encode(
-        //     ORDER_TYPE_HASH,
-        //     maker,
-        //     taker,
-        //     tokenId,
-        //     makerAmount,
-        //     takerAmount,
-        //     side,
-        //     feeRateBps,
-        //     nonce,
-        //     signer,
-        //     expiration,
-        //     signatureType
-        // ))
-        
-        String orderStructData =
-            ORDER_TYPE_HASH +
-            padLeft(makerAddress.substring(2), 64) +
-            padLeft("0", 64) + // taker = 0x0000...
-            padLeft(tokenId, 64) +
-            padLeft(Long.toHexString(makerAmount), 64) +
-            padLeft(Long.toHexString(takerAmount), 64) +
-            padLeft(Integer.toHexString(side), 64) +
-            padLeft("0", 64) + // feeRateBps = 0
-            padLeft(Long.toHexString(nonce), 64) +
-            padLeft(makerAddress.substring(2), 64) + // signer
-            padLeft(Long.toHexString(expiration), 64) +
-            padLeft("0", 64); // signatureType = 0
+        // 2. Struct Hash (공식 Order 스펙: salt, maker, signer, taker, tokenId, makerAmount, takerAmount, expiration, nonce, feeRateBps, side, signatureType)
+        byte[] structEncoded = new byte[32 * 13]; // typeHash + 12 fields
+        System.arraycopy(ORDER_TYPE_HASH_BYTES, 0, structEncoded, 0, 32);
+        encodeUint256(structEncoded, 32, BigInteger.valueOf(salt));
+        encodeAddress(structEncoded, 64, makerAddress);
+        encodeAddress(structEncoded, 96, makerAddress); // signer = maker
+        encodeAddress(structEncoded, 128, "0x0000000000000000000000000000000000000000"); // taker
+        encodeUint256(structEncoded, 160, new BigInteger(tokenId.length() > 40 ? tokenId : "0", tokenId.matches("\\d+") ? 10 : 16));
+        encodeUint256(structEncoded, 192, BigInteger.valueOf(makerAmount));
+        encodeUint256(structEncoded, 224, BigInteger.valueOf(takerAmount));
+        encodeUint256(structEncoded, 256, BigInteger.valueOf(expiration));
+        encodeUint256(structEncoded, 288, BigInteger.valueOf(nonce));
+        encodeUint256(structEncoded, 320, BigInteger.ZERO); // feeRateBps = 0
+        encodeUint256(structEncoded, 352, BigInteger.valueOf(side)); // side as uint8 padded
+        encodeUint256(structEncoded, 384, BigInteger.ZERO); // signatureType = 0 (EOA)
 
-        byte[] structHash = Hash.sha3(Numeric.hexStringToByteArray(orderStructData));
+        byte[] structHash = Hash.sha3(structEncoded);
 
-        // 3. EIP-712 메시지 해시
-        // digest = keccak256(abi.encodePacked(
-        //     "\x19\x01",
-        //     domainSeparator,
-        //     structHash
-        // ))
-        
+        // 3. EIP-712 digest = keccak256("\x19\x01" + domainSeparator + structHash)
         byte[] eip712Message = new byte[2 + 32 + 32];
         eip712Message[0] = 0x19;
         eip712Message[1] = 0x01;
@@ -212,22 +192,30 @@ public class PolymarketOrderService {
         // 4. 서명
         Sign.SignatureData signature = Sign.signMessage(messageHash, credentials.getEcKeyPair(), false);
 
-        // 5. 서명 포맷 (r + s + v)
+        // 5. r + s + v
         return "0x" +
                Numeric.toHexStringNoPrefix(signature.getR()) +
                Numeric.toHexStringNoPrefix(signature.getS()) +
                Numeric.toHexStringNoPrefix(signature.getV());
     }
 
-    /**
-     * 16진수 왼쪽 패딩
-     */
-    private String padLeft(String str, int length) {
-        if (str.startsWith("0x")) str = str.substring(2);
-        while (str.length() < length) {
-            str = "0" + str;
+    private void encodeUint256(byte[] dest, int offset, BigInteger value) {
+        byte[] bytes = value.toByteArray();
+        // 32바이트 패딩 (big-endian)
+        int start = offset + 32 - bytes.length;
+        if (bytes[0] == 0 && bytes.length > 1) {
+            // 부호 바이트 제거
+            System.arraycopy(bytes, 1, dest, offset + 32 - bytes.length + 1, bytes.length - 1);
+        } else {
+            System.arraycopy(bytes, 0, dest, Math.max(start, offset), Math.min(bytes.length, 32));
         }
-        return str;
+    }
+
+    private void encodeAddress(byte[] dest, int offset, String address) {
+        String clean = address.startsWith("0x") ? address.substring(2) : address;
+        byte[] addrBytes = Numeric.hexStringToByteArray(clean);
+        // 주소는 20바이트 → 왼쪽 12바이트 패딩
+        System.arraycopy(addrBytes, 0, dest, offset + 12, 20);
     }
 
     private String get(String url) throws Exception {
